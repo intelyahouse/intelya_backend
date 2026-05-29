@@ -1,0 +1,83 @@
+# ===================================
+# INTELYA HAVEN - URLs principales
+# ===================================
+
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+    SpectacularRedocView,
+)
+
+# ===================================
+# API v1 URLs
+# ===================================
+api_v1_patterns = [
+    # Auth
+    path('auth/', include('apps.users.urls.auth')),
+
+    # Utilisateurs
+    path('users/', include('apps.users.urls.users')),
+
+    # Agents
+    path('agents/', include('apps.agents.urls')),
+
+    # Propriétaires
+    path('owners/', include('apps.owners.urls')),
+
+    # Biens immobiliers
+    path('properties/', include('apps.properties.urls')),
+
+    # Visites
+    path('visits/', include('apps.visits.urls')),
+
+    # Contrats
+    path('contracts/', include('apps.contracts.urls')),
+
+    # Gestion locative
+    path('leases/', include('apps.leases.urls')),
+
+    # Paiements
+    path('payments/', include('apps.payments.urls')),
+
+    # Messagerie et Forum
+    path('messaging/', include('apps.messaging.urls')),
+
+    # Notifications
+    path('notifications/', include('apps.notifications.urls')),
+
+    # Avis et notations
+    path('reviews/', include('apps.reviews.urls')),
+
+    # Litiges et Signalements
+    path('disputes/', include('apps.disputes.urls')),
+
+    # Boost agents
+    path('boost/', include('apps.boost.urls')),
+
+    # Parrainage
+    path('referrals/', include('apps.referrals.urls')),
+]
+
+urlpatterns = [
+    # Admin Django
+    path('admin/', admin.site.urls),
+
+    # API v1
+    path('api/v1/', include(api_v1_patterns)),
+
+    # Swagger Documentation
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # OAuth
+    path('accounts/', include('allauth.urls')),
+]
+
+# Fichiers media en développement
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
