@@ -301,3 +301,86 @@ class RequestRoleView(APIView):
         return Response(success_response(
             message=f"Demande envoyée pour devenir {data['requested_role']}. L'admin va valider votre compte."
         ))
+
+
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Auth'],
+        summary="Mot de passe oublié",
+        description="Envoie un code OTP par SMS pour réinitialiser le mot de passe.",
+        request=ForgotPasswordSerializer
+    )
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                error_response("Données invalides", serializer.errors),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        email = serializer.validated_data['email']
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                success_response(
+                    message="Si cet email existe, un code a été envoyé."
+                )
+            )
+
+        code = generate_otp()
+        expires_at = timezone.now() + timedelta(minutes=15)
+        OTPVerification.objects.filter(user=user, is_used=False).update(is_used=True)
+        OTPVerification.objects.create(
+            user=user, code=code,
+            phone=user.phone, expires_at=expires_at
+        )
+        print(f"[RESET PASSWORD] Code pour {user.email} / {user.phone}: {code}")
+
+        return Response(success_response(
+            message="Code de réinitialisation envoyé sur votre téléphone."
+        ))
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Auth'],
+        summary="Réinitialiser le mot de passe",
+        description="Utilise le code OTP reçu pour définir un nouveau mot de passe.",
+        request=ResetPasswordSerializer
+    )
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                error_response("Données invalides", serializer.errors),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        token = serializer.validated_data['token']
+        new_password = serializer.validated_data['new_password']
+
+        otp = OTPVerification.objects.filter(
+            code=token, is_used=False
+        ).last()
+
+        if not otp or not otp.is_valid():
+            return Response(
+                error_response("Code invalide ou expiré."),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = otp.user
+        user.set_password(new_password)
+        user.save()
+
+        otp.is_used = True
+        otp.save()
+
+        return Response(success_response(
+            message="Mot de passe réinitialisé avec succès."
+        ))

@@ -358,3 +358,10 @@ BANK_API_KEY = config('BANK_API_KEY', default='')
 BANK_API_URL = config('BANK_API_URL', default='')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ===================================
+# RATE LIMITING
+# ===================================
+RATELIMIT_USE_CACHE = 'default'
+RATELIMIT_ENABLE = True
