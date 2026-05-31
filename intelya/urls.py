@@ -59,6 +59,8 @@ api_v1_patterns = [
 
     # Parrainage
     path('referrals/', include('apps.referrals.urls')),
+    path('reviews/', include('apps.reviews.urls')),
+    path('disputes/', include('apps.disputes.urls')),
 ]
 
 urlpatterns = [

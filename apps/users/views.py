@@ -6,9 +6,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import authenticate, get_user_model
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from datetime import timedelta
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample
+from django_ratelimit.decorators import ratelimit
 from .serializers import (
     RegisterSerializer, LoginSerializer, OTPVerifySerializer,
     OTPResendSerializer, UserProfileSerializer,
@@ -21,6 +23,7 @@ from core.utils import generate_otp, success_response, error_response
 User = get_user_model()
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -59,6 +62,7 @@ class RegisterView(APIView):
         print(f"[SMS] Code OTP pour {user.phone}: {code}")
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -109,6 +113,12 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+        if not user.is_phone_verified:
+            return Response(
+                error_response("Téléphone non vérifié. Entrez votre code OTP."),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         if user.is_blocked:
             return Response(
                 error_response("Votre compte est bloqué. Réglez vos impayés."),
@@ -144,6 +154,7 @@ class LogoutView(APIView):
             )
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -184,6 +195,7 @@ class VerifyOTPView(APIView):
         return Response(success_response(message="Téléphone vérifié avec succès ✅"))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ResendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -303,6 +315,7 @@ class RequestRoleView(APIView):
         ))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
@@ -344,6 +357,7 @@ class ForgotPasswordView(APIView):
         ))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
 

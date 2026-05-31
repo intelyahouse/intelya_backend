@@ -1,9 +1,7 @@
-
 # INTELYA HAVEN - Utilitaires
 
-
 import uuid
-import random
+import secrets
 import string
 from django.conf import settings
 from django.utils import timezone
@@ -12,14 +10,14 @@ import math
 
 
 def generate_otp(length=6):
-    """Génère un code OTP à 6 chiffres"""
-    return ''.join([str(random.randint(0, 9)) for _ in range(length)])
+    """Génère un code OTP à 6 chiffres (cryptographiquement sûr)"""
+    return ''.join([str(secrets.randbelow(10)) for _ in range(length)])
 
 
 def generate_referral_code(length=8):
     """Génère un code de parrainage unique"""
     chars = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(chars, k=length))
+    return ''.join(secrets.choice(chars) for _ in range(length))
 
 
 def generate_transaction_reference():
@@ -32,7 +30,7 @@ def calculate_distance_meters(lat1, lon1, lat2, lon2):
     Calcule la distance en mètres entre deux coordonnées GPS
     Formule Haversine
     """
-    R = 6371000  # Rayon de la Terre en mètres
+    R = 6371000
 
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
