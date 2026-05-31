@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Settings Development
-# ===================================
 
 from .base import *
 

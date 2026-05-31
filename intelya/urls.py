@@ -1,6 +1,6 @@
-# ===================================
+
 # INTELYA HAVEN - URLs principales
-# ===================================
+
 
 from django.contrib import admin
 from django.urls import path, include
@@ -12,9 +12,8 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
-# ===================================
+
 # API v1 URLs
-# ===================================
 api_v1_patterns = [
     # Auth
     path('auth/', include('apps.users.urls.auth')),

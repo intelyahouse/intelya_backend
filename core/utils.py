@@ -1,6 +1,6 @@
-# ===================================
+
 # INTELYA HAVEN - Utilitaires
-# ===================================
+
 
 import uuid
 import random

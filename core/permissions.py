@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Permissions par rôle
-# ===================================
 
 from rest_framework.permissions import BasePermission
 

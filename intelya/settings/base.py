@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Settings Base
-# ===================================
 
 import os
 from pathlib import Path
@@ -13,9 +12,8 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
 
-# ===================================
+
 # APPLICATIONS
-# ===================================
 DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -63,9 +61,8 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# ===================================
+
 # MIDDLEWARE
-# ===================================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -81,9 +78,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'intelya.urls'
 
-# ===================================
+
 # TEMPLATES
-# ===================================
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -103,9 +99,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'intelya.wsgi.application'
 ASGI_APPLICATION = 'intelya.asgi.application'
 
-# ===================================
+
 # BASE DE DONNÉES PostgreSQL + PostGIS
-# ===================================
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
@@ -120,9 +115,8 @@ DATABASES = {
     }
 }
 
-# ===================================
+
 # CACHE - Redis
-# ===================================
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -133,9 +127,9 @@ CACHES = {
     }
 }
 
-# ===================================
+
 # CELERY - Tâches asynchrones
-# ===================================
+
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
@@ -144,9 +138,9 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Africa/Douala'
 CELERY_BEAT_SCHEDULE = {}
 
-# ===================================
+
 # CHANNELS - WebSocket (Chat temps réel)
-# ===================================
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -156,9 +150,8 @@ CHANNEL_LAYERS = {
     },
 }
 
-# ===================================
 # JWT Authentication
-# ===================================
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -191,9 +184,8 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# ===================================
+
 # SWAGGER - Documentation API
-# ===================================
 SPECTACULAR_SETTINGS = {
     'TITLE': 'INTELYA HAVEN API',
     'DESCRIPTION': '''
@@ -232,18 +224,16 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 
-# ===================================
+
 # CORS - Autoriser le frontend
-# ===================================
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:3000',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# ===================================
+
 # AUTH - Modèle utilisateur custom
-# ===================================
 AUTH_USER_MODEL = 'users.User'
 
 AUTHENTICATION_BACKENDS = [
@@ -251,9 +241,8 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
-# ===================================
+
 # ALLAUTH - Google et Apple OAuth
-# ===================================
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_PROVIDERS = {
@@ -273,9 +262,8 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-# ===================================
+
 # STOCKAGE - AWS S3
-# ===================================
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='intelya-haven-storage')
@@ -284,18 +272,18 @@ AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
 AWS_DEFAULT_ACL = 'private'
 AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 
-# ===================================
+
 # FICHIERS STATIQUES ET MEDIA
-# ===================================
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# ===================================
+
 # EMAIL
-# ===================================
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
@@ -304,9 +292,9 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='INTELYA HAVEN <noreply@intelya-haven.com>')
 
-# ===================================
+
 # INTERNATIONALISATION
-# ===================================
+
 LANGUAGE_CODE = 'fr-cm'
 TIME_ZONE = 'Africa/Douala'
 USE_I18N = True
@@ -316,9 +304,8 @@ LANGUAGES = [
     ('en', 'English'),
 ]
 
-# ===================================
+
 # PARAMÈTRES PLATEFORME
-# ===================================
 PLATFORM_COMMISSION_PERCENT = config('PLATFORM_COMMISSION_PERCENT', default=2, cast=float)
 PLATFORM_NAME = config('PLATFORM_NAME', default='INTELYA HAVEN')
 PLATFORM_CURRENCY = config('PLATFORM_CURRENCY', default='FCFA')
@@ -360,8 +347,7 @@ BANK_API_URL = config('BANK_API_URL', default='')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# ===================================
+
 # RATE LIMITING
-# ===================================
 RATELIMIT_USE_CACHE = 'default'
 RATELIMIT_ENABLE = True

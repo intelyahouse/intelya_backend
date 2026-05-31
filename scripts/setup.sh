@@ -1,7 +1,5 @@
 #!/bin/bash
-# ===================================
 # INTELYA HAVEN - Script d'installation
-# ===================================
 
 echo "🚀 Installation INTELYA HAVEN Backend..."
 

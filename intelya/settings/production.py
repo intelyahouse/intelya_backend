@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Settings Production
-# ===================================
 
 from .base import *
 import sentry_sdk
