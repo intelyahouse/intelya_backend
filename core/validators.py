@@ -1,45 +1,61 @@
 from django.core.exceptions import ValidationError
-import os
 
 
-ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
-ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
-ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi']
-
-MAX_IMAGE_SIZE   = 5 * 1024 * 1024   # 5 MB
-MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10 MB
-MAX_VIDEO_SIZE   = 100 * 1024 * 1024  # 100 MB
+ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+MAX_IMAGE_SIZE_MB   = 10
 
 
 def validate_image_file(file):
-    ext = os.path.splitext(file.name)[1].lower()
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise ValidationError(f"Format non autorisé. Utilisez: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}")
-    if file.size > MAX_IMAGE_SIZE:
-        raise ValidationError(f"Fichier trop volumineux. Maximum: 5 MB")
+    """Valide qu'un fichier uploadé est bien une image valide"""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise ValidationError(
+            f"Format non supporté: {file.content_type}. Utilisez JPEG, PNG ou WebP."
+        )
+    max_size = MAX_IMAGE_SIZE_MB * 1024 * 1024
+    if file.size > max_size:
+        raise ValidationError(
+            f"Image trop volumineuse ({file.size // (1024*1024)}MB). Maximum: {MAX_IMAGE_SIZE_MB}MB."
+        )
+    return file
+
+
+ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+MAX_DOCUMENT_SIZE_MB    = 20
 
 
 def validate_document_file(file):
-    ext = os.path.splitext(file.name)[1].lower()
-    if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
-        raise ValidationError(f"Format non autorisé. Utilisez: {', '.join(ALLOWED_DOCUMENT_EXTENSIONS)}")
-    if file.size > MAX_DOCUMENT_SIZE:
-        raise ValidationError(f"Fichier trop volumineux. Maximum: 10 MB")
-
-
-def validate_video_file(file):
-    ext = os.path.splitext(file.name)[1].lower()
-    if ext not in ALLOWED_VIDEO_EXTENSIONS:
-        raise ValidationError(f"Format non autorisé. Utilisez: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}")
-    if file.size > MAX_VIDEO_SIZE:
-        raise ValidationError(f"Vidéo trop volumineuse. Maximum: 100 MB")
-
-
-def validate_phone_cameroon(value):
-    """Valide le format téléphone camerounais +237XXXXXXXXX"""
-    import re
-    pattern = r'^\+237[6-9][0-9]{8}$'
-    if not re.match(pattern, value):
+    """Valide qu'un fichier uploadé est un document valide (PDF ou image)"""
+    if file.content_type not in ALLOWED_DOCUMENT_TYPES:
         raise ValidationError(
-            "Format téléphone invalide. Utilisez le format +237XXXXXXXXX (ex: +237670000000)"
+            f"Format non supporté: {file.content_type}. Utilisez PDF, JPEG ou PNG."
         )
+    max_size = MAX_DOCUMENT_SIZE_MB * 1024 * 1024
+    if file.size > max_size:
+        raise ValidationError(
+            f"Fichier trop volumineux ({file.size // (1024*1024)}MB). Maximum: {MAX_DOCUMENT_SIZE_MB}MB."
+        )
+    return file
+
+
+import re
+
+def validate_phone_cameroon(phone):
+    """Valide un numéro de téléphone camerounais"""
+    from django.core.exceptions import ValidationError
+    pattern = r'^\+?237[0-9]{9}$'
+    if not re.match(pattern, str(phone)):
+        raise ValidationError(
+            "Numéro de téléphone invalide. Format attendu: +237XXXXXXXXX"
+        )
+    return phone
+
+
+def validate_phone_international(phone):
+    """Valide un numéro de téléphone international"""
+    from django.core.exceptions import ValidationError
+    pattern = r'^\+[1-9][0-9]{7,14}$'
+    if not re.match(pattern, str(phone)):
+        raise ValidationError(
+            "Numéro de téléphone invalide. Format attendu: +XXX..."
+        )
+    return phone

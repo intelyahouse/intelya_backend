@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    AIMatchView,
     PropertyListView, PropertyDetailView,
     CreatePropertyView, UpdatePropertyView,
     PropertyLikeView, MyFavoritesView,
@@ -15,4 +16,5 @@ urlpatterns = [
     path('<uuid:property_id>/update/', UpdatePropertyView.as_view(), name='property-update'),
     path('<uuid:property_id>/like/', PropertyLikeView.as_view(), name='property-like'),
     path('<uuid:property_id>/photos/', UploadPropertyPhotosView.as_view(), name='property-photos'),
+    path('ai-match/', AIMatchView.as_view(), name='ai-match'),
 ]

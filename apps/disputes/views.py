@@ -90,8 +90,20 @@ class CreateReportView(APIView):
         ).count()
 
         if recent_reports >= 3:
-            reported_user.is_active = False
-            reported_user.save(update_fields=['is_active'])
+            # Bloquer avec is_blocked (cohérent avec le login)
+            reported_user.is_blocked = True
+            reported_user.is_active  = False
+            reported_user.save(update_fields=['is_blocked', 'is_active'])
+            # Notifier l'admin
+            from apps.notifications.utils import notify_bulk
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            admins = User.objects.filter(role='admin', is_active=True)
+            notify_bulk(
+                admins, 'system',
+                'Suspension automatique',
+                f"{reported_user.get_full_name()} suspendu après 3 signalements en 30 jours."
+            )
 
         return Response(
             success_response(ReportSerializer(report).data, "Signalement enregistré"),

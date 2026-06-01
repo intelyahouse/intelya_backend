@@ -80,7 +80,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             # Photos et médias
             'photos', 'cover_photo', 'has_video', 'has_floor_plan',
             # Agent et propriétaire
-            'agent_name', 'agent_phone', 'owner_name',
+            'agent_name', 'owner_name',
             'is_liked', 'created_at'
         ]
 

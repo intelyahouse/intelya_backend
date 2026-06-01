@@ -66,7 +66,7 @@ class RequestVisitView(APIView):
 
         existing = VisitRequest.objects.filter(
             client=request.user,
-            rental_property=prop,
+            visit_property=prop,
             status__in=['pending', 'scheduled']
         ).exists()
 
@@ -85,7 +85,7 @@ class RequestVisitView(APIView):
         visit = VisitRequest.objects.create(
             client=request.user,
             agent=agent,
-            rental_property=prop,
+            visit_property=prop,
             visit_fee=visit_fee,
             is_free=is_free,
             client_message=serializer.validated_data.get('client_message', ''),
@@ -147,7 +147,7 @@ class ConfirmGPSView(APIView):
         client_lat = serializer.validated_data['latitude']
         client_lng = serializer.validated_data['longitude']
 
-        prop = visit.rental_property
+        prop = visit.visit_property
         if prop.location:
             within_radius, distance = is_within_radius(
                 client_lat, client_lng,
@@ -212,13 +212,47 @@ class CancelVisitView(APIView):
             return Response(error_response("Un motif est requis"), status=status.HTTP_400_BAD_REQUEST)
 
         cancelled_by = 'client' if request.user == visit.client else 'agent'
-        visit.status             = 'cancelled'
-        visit.cancelled_by       = cancelled_by
+        visit.status              = 'cancelled'
+        visit.cancelled_by        = cancelled_by
         visit.cancellation_reason = serializer.validated_data['reason']
-        visit.cancelled_at       = timezone.now()
+        visit.cancelled_at        = timezone.now()
 
         if not visit.is_free and visit.payment_status == 'paid':
+            # Politique annulation : avant 24h = 100%, après 24h = 50%, agent annule = 100%
+            now = timezone.now()
+            from datetime import datetime, date
+            if cancelled_by == 'agent':
+                refund_percent = 100
+            elif visit.scheduled_date:
+                from datetime import datetime, time
+                visit_datetime = datetime.combine(visit.scheduled_date, visit.scheduled_time or time(0, 0))
+                from django.utils import timezone as tz
+                visit_datetime = tz.make_aware(visit_datetime)
+                hours_before = (visit_datetime - now).total_seconds() / 3600
+                refund_percent = 100 if hours_before >= 24 else 50
+            else:
+                refund_percent = 100
+
+            refund_amount = int(visit.visit_fee * refund_percent / 100)
             visit.payment_status = 'refunded'
+
+            if refund_amount > 0:
+                try:
+                    from apps.payments.models import Transaction
+                    txn = Transaction.objects.filter(
+                        related_visit_id=visit.id, status='completed'
+                    ).first()
+                    if txn:
+                        from apps.payments.services.campay import campay_service
+                        campay_service.disburse(
+                            phone=visit.client.phone,
+                            amount=refund_amount,
+                            reference=f"REFUND-{txn.reference}",
+                            description=f"Remboursement {refund_percent}% annulation visite INTELYA HAVEN"
+                        )
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"[REMBOURSEMENT] {e}")
             # Déclencher remboursement réel via Campay
             try:
                 from apps.payments.models import Transaction
@@ -254,7 +288,13 @@ class MyVisitsView(APIView):
         else:
             visits = VisitRequest.objects.none()
 
-        return Response(success_response(VisitRequestSerializer(visits, many=True).data))
+        from core.pagination import StandardResultsSetPagination
+        visits = visits.order_by('-created_at')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(visits, request)
+        return paginator.get_paginated_response(
+            VisitRequestSerializer(page, many=True).data
+        )
 
 
 class LeaveReviewView(APIView):

@@ -1,38 +1,32 @@
 from celery import shared_task
-from django.utils import timezone
 import logging
-
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def auto_release_escrow():
-    """
-    Libère automatiquement l'escrow après 24h si non contesté.
-    La visite est considérée effectuée si le client ne conteste pas.
-    """
-    from apps.payments.models import Escrow
-    from apps.visits.models import VisitRequest
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def auto_release_escrow(self):
+    try:
+        from apps.payments.models import Escrow
+        from apps.visits.models import VisitRequest
+        from django.utils import timezone
+        from django.db import transaction
 
-    now = timezone.now()
-    to_release = Escrow.objects.filter(
-        status='held',
-        release_after__lte=now
-    ).select_related('transaction')
+        now = timezone.now()
+        to_release = Escrow.objects.filter(status='held', release_after__lte=now).select_related('transaction')
 
-    for escrow in to_release:
-        escrow.status     = 'released'
-        escrow.released_at = now
-        escrow.save()
+        for escrow in to_release:
+            try:
+                with transaction.atomic():
+                    escrow.status = 'released'
+                    escrow.released_at = now
+                    escrow.save()
+                    if escrow.transaction.related_visit_id:
+                        VisitRequest.objects.filter(
+                            id=escrow.transaction.related_visit_id, status='scheduled'
+                        ).update(status='completed', agent_confirmed=True)
+                    logger.info(f"[CELERY] Escrow libéré: {escrow.amount} FCFA")
+            except Exception as e:
+                logger.error(f"[CELERY] Erreur escrow {escrow.id}: {e}")
 
-        # Marquer la visite comme complétée
-        if escrow.transaction.related_visit_id:
-            VisitRequest.objects.filter(
-                id=escrow.transaction.related_visit_id,
-                status='scheduled'
-            ).update(status='completed', agent_confirmed=True)
-
-        logger.info(f"[CELERY] Escrow libéré: {escrow.amount} FCFA — {escrow.transaction.reference}")
-
-    if to_release.count() > 0:
-        logger.info(f"[CELERY] {to_release.count()} escrow(s) libéré(s) ✅")
+    except Exception as exc:
+        raise self.retry(exc=exc)

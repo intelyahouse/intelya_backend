@@ -16,10 +16,9 @@ class CampayService:
     # BASE_URL = "https://campay.net/api"     # Production
 
     def __init__(self):
-        self.api_key  = settings.ORANGE_MONEY_API_KEY
-        self.api_url  = settings.ORANGE_MONEY_API_URL or self.BASE_URL
         self.username = getattr(settings, 'CAMPAY_USERNAME', '')
         self.password = getattr(settings, 'CAMPAY_PASSWORD', '')
+        self.api_url  = getattr(settings, 'CAMPAY_API_URL', self.BASE_URL)
         self.token    = None
 
     def get_token(self):

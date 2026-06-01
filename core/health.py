@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.db import connection
 from django.core.cache import cache
-import django
+import time
 
 
 class HealthCheckView(APIView):
@@ -11,27 +11,27 @@ class HealthCheckView(APIView):
 
     def get(self, request):
         health = {
-            'status': 'healthy',
-            'version': '1.0.0',
-            'platform': 'INTELYA HAVEN',
+            'status': 'ok',
+            'timestamp': time.time(),
+            'services': {}
         }
 
         # Vérifier PostgreSQL
         try:
-            connection.ensure_connection()
-            health['database'] = 'connected'
-        except Exception:
-            health['database'] = 'disconnected'
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            health['services']['database'] = 'ok'
+        except Exception as e:
+            health['services']['database'] = f'error: {str(e)}'
             health['status'] = 'degraded'
 
         # Vérifier Redis
         try:
-            cache.set('health_check', 'ok', 10)
+            cache.set('health_check', '1', 5)
             val = cache.get('health_check')
-            health['cache'] = 'connected' if val == 'ok' else 'degraded'
-        except Exception:
-            health['cache'] = 'disconnected'
+            health['services']['redis'] = 'ok' if val else 'error'
+        except Exception as e:
+            health['services']['redis'] = f'error: {str(e)}'
             health['status'] = 'degraded'
 
-        status_code = 200 if health['status'] == 'healthy' else 503
-        return Response(health, status=status_code)
+        return Response(health)

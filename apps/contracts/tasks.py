@@ -6,8 +6,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def check_contract_expiry():
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def check_contract_expiry(self):
     """Notifie les agents et propriétaires 30 jours avant expiration du contrat"""
     from apps.contracts.models import AgentOwnerContract
     from apps.notifications.utils import notify
@@ -36,3 +36,19 @@ def check_contract_expiry():
         logger.info(f"[CELERY] Alerte expiration contrat: {contract.agent.get_full_name()} ↔ {contract.owner.get_full_name()}")
 
     logger.info("[CELERY] check_contract_expiry terminé ✅")
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def expire_old_contracts(self):
+    """Marque automatiquement les contrats expirés"""
+    try:
+        from apps.contracts.models import AgentOwnerContract
+        today = timezone.now().date()
+        expired = AgentOwnerContract.objects.filter(
+            status='active',
+            end_date__lt=today
+        )
+        count = expired.update(status='expired')
+        logger.info(f"[CELERY] {count} contrats expirés automatiquement")
+    except Exception as exc:
+        raise self.retry(exc=exc)

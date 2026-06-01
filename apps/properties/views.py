@@ -2,37 +2,27 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from .models import Property, PropertyPhoto, PropertyLike
-from .serializers import (
-    PropertyListSerializer, PropertyDetailSerializer,
-    PropertyAdminSerializer, CreatePropertySerializer
-)
+from .serializers import PropertyListSerializer, PropertyDetailSerializer, PropertyAdminSerializer, CreatePropertySerializer
 from apps.agents.models import ClientAgentRelation
 from core.permissions import IsAgent, IsAdmin
 from core.utils import success_response, error_response
-from django.core.cache import cache
+from core.pagination import StandardResultsSetPagination
+from core.throttles import SearchThrottle, UploadThrottle
+from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
 
 class PropertyListView(APIView):
-    """
-    Liste des biens avec filtrage intelligent.
-    - Les biens de l'agent du client apparaissent EN PREMIER
-    - Jamais d'adresse complète pour les clients
-    """
     permission_classes = [AllowAny]
+    throttle_classes   = [SearchThrottle]
 
     @extend_schema(tags=['Properties'], summary="Liste des biens disponibles")
     def get(self, request):
-        queryset = Property.objects.filter(
-            status='available'
-        ).select_related('agent', 'owner').prefetch_related('photos')
-
-        # ===== FILTRES =====
         city         = request.query_params.get('city', '')
         neighborhood = request.query_params.get('neighborhood', '')
         prop_type    = request.query_params.get('type', '')
@@ -42,7 +32,20 @@ class PropertyListView(APIView):
         is_furnished = request.query_params.get('furnished')
         has_generator = request.query_params.get('generator')
         has_parking  = request.query_params.get('parking')
-        has_borehole = request.query_params.get('borehole')
+        page         = request.query_params.get('page', 1)
+
+        # Cache pour les recherches anonymes
+        cache_key = None
+        if not request.user.is_authenticated:
+            cache_key = f"properties:{city}:{neighborhood}:{prop_type}:{min_price}:{max_price}:{bedrooms}:{page}"
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(success_response(cached))
+
+        # Requête optimisée avec select_related
+        queryset = Property.objects.filter(
+            status='available'
+        ).select_related('agent', 'owner').prefetch_related('photos', 'likes')
 
         if city:
             queryset = queryset.filter(city__icontains=city)
@@ -62,57 +65,50 @@ class PropertyListView(APIView):
             queryset = queryset.filter(has_generator=True)
         if has_parking == 'true':
             queryset = queryset.filter(has_parking=True)
-        if has_borehole == 'true':
-            queryset = queryset.filter(has_borehole=True)
 
-        # ===== LOGIQUE AGENT DU CLIENT EN PREMIER =====
+        # Biens de l'agent du client EN PREMIER
         if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
             relation = ClientAgentRelation.objects.filter(
                 client=request.user, is_active=True
-            ).first()
+            ).select_related('agent').first()
 
             if relation:
-                # Biens de l'agent du client EN PREMIER
-                agent_properties   = queryset.filter(agent=relation.agent)
-                other_properties   = queryset.exclude(agent=relation.agent)
-                combined = list(agent_properties) + list(other_properties)
-                serializer = PropertyListSerializer(
-                    combined, many=True, context={'request': request}
-                )
-                return Response(success_response(serializer.data))
+                from django.db.models import Case, When, IntegerField, Value
+                queryset = queryset.annotate(
+                    agent_priority=Case(
+                        When(agent=relation.agent, then=Value(1)),
+                        default=Value(0),
+                        output_field=IntegerField()
+                    )
+                ).order_by('-agent_priority', '-created_at')
 
-        # Cache Redis 5 minutes pour les recherches sans utilisateur connecté
-        if not request.user.is_authenticated:
-            cache_key = f"properties_{city}_{neighborhood}_{prop_type}_{min_price}_{max_price}_{bedrooms}"
-            cached = cache.get(cache_key)
-            if cached:
-                return Response(success_response(cached))
-            serializer = PropertyListSerializer(queryset, many=True, context={'request': request})
-            cache.set(cache_key, serializer.data, 300)
-            return Response(success_response(serializer.data))
+        # Pagination
+        paginator   = StandardResultsSetPagination()
+        page_data   = paginator.paginate_queryset(queryset, request)
+        serializer  = PropertyListSerializer(page_data, many=True, context={'request': request})
+        result      = paginator.get_paginated_response(serializer.data).data
 
-        serializer = PropertyListSerializer(queryset, many=True, context={'request': request})
-        return Response(success_response(serializer.data))
+        if cache_key:
+            cache.set(cache_key, result, 300)
+
+        return Response(result)
 
 
 class PropertyDetailView(APIView):
-    """Détail d'un bien — sans adresse complète"""
     permission_classes = [AllowAny]
 
     @extend_schema(tags=['Properties'], summary="Détail d'un bien")
     def get(self, request, property_id):
         try:
-            prop = Property.objects.get(id=property_id)
+            prop = Property.objects.select_related(
+                'agent', 'owner'
+            ).prefetch_related('photos', 'likes').get(id=property_id)
         except Property.DoesNotExist:
-            return Response(
-                error_response("Bien introuvable"),
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        prop.views_count += 1
-        prop.save(update_fields=['views_count'])
+        # Incrémenter vues (sans bloquer la réponse)
+        Property.objects.filter(id=property_id).update(views_count=prop.views_count + 1)
 
-        # Admin voit l'adresse complète
         if request.user.is_authenticated and request.user.role == 'admin':
             serializer = PropertyAdminSerializer(prop, context={'request': request})
         else:
@@ -122,62 +118,41 @@ class PropertyDetailView(APIView):
 
 
 class CreatePropertyView(APIView):
-    """Créer un bien — réservé aux agents"""
     permission_classes = [IsAuthenticated, IsAgent]
 
-    @extend_schema(
-        tags=['Properties'],
-        summary="Publier un bien (agent uniquement)",
-        request=CreatePropertySerializer
-    )
+    @extend_schema(tags=['Properties'], summary="Publier un bien (agent)", request=CreatePropertySerializer)
     def post(self, request):
+        from apps.agents.models import OwnerAgentRelation
         owner_id = request.data.get('owner_id')
         if not owner_id:
-            return Response(
-                error_response("owner_id est requis"),
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(error_response("owner_id requis"), status=status.HTTP_400_BAD_REQUEST)
 
         try:
             owner = User.objects.get(id=owner_id, role='owner')
         except User.DoesNotExist:
-            return Response(
-                error_response("Propriétaire introuvable"),
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response(error_response("Propriétaire introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        # Vérifier que l'agent gère bien ce propriétaire
-        from apps.agents.models import OwnerAgentRelation
-        if not OwnerAgentRelation.objects.filter(
-            agent=request.user, owner=owner, status='active'
-        ).exists():
-            return Response(
-                error_response("Ce propriétaire n'est pas lié à votre agence"),
-                status=status.HTTP_403_FORBIDDEN
-            )
+        if not OwnerAgentRelation.objects.filter(agent=request.user, owner=owner, status='active').exists():
+            return Response(error_response("Ce propriétaire n'est pas lié à votre agence"), status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreatePropertySerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(
-                error_response("Données invalides", serializer.errors),
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(error_response("Données invalides", serializer.errors), status=status.HTTP_400_BAD_REQUEST)
 
         prop = serializer.save(owner=owner, agent=request.user)
+
+        # Invalider le cache de recherche
+        cache.delete_pattern("intelya:properties:*")
+
         return Response(
-            success_response(
-                PropertyDetailSerializer(prop, context={'request': request}).data,
-                "Bien publié avec succès"
-            ),
+            success_response(PropertyDetailSerializer(prop, context={'request': request}).data, "Bien publié ✅"),
             status=status.HTTP_201_CREATED
         )
 
 
 class UpdatePropertyView(APIView):
-    """Modifier ou supprimer un bien"""
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=['Properties'], summary="Modifier un bien")
     def patch(self, request, property_id):
         try:
             prop = Property.objects.get(id=property_id)
@@ -192,9 +167,9 @@ class UpdatePropertyView(APIView):
             return Response(error_response("Données invalides", serializer.errors), status=status.HTTP_400_BAD_REQUEST)
 
         serializer.save()
+        cache.delete_pattern("intelya:properties:*")
         return Response(success_response(serializer.data, "Bien mis à jour"))
 
-    @extend_schema(tags=['Properties'], summary="Supprimer/Suspendre un bien")
     def delete(self, request, property_id):
         try:
             prop = Property.objects.get(id=property_id)
@@ -206,67 +181,61 @@ class UpdatePropertyView(APIView):
 
         prop.status = 'suspended'
         prop.save(update_fields=['status'])
+        cache.delete_pattern("intelya:properties:*")
         return Response(success_response(message="Bien suspendu"))
 
 
 class PropertyLikeView(APIView):
-    """Liker ou unliker un bien"""
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=['Properties'], summary="Liker ou unliker un bien")
     def post(self, request, property_id):
         try:
             prop = Property.objects.get(id=property_id)
         except Property.DoesNotExist:
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        like, created = PropertyLike.objects.get_or_create(
-            property=prop, user=request.user
-        )
-
+        like, created = PropertyLike.objects.get_or_create(property=prop, user=request.user)
         if not created:
             like.delete()
-            prop.likes_count = max(0, prop.likes_count - 1)
-            prop.save(update_fields=['likes_count'])
+            Property.objects.filter(id=property_id).update(likes_count=max(0, prop.likes_count - 1))
             return Response(success_response(message="Like retiré"))
 
-        prop.likes_count += 1
-        prop.save(update_fields=['likes_count'])
+        Property.objects.filter(id=property_id).update(likes_count=prop.likes_count + 1)
         return Response(success_response(message="Bien liké ❤️"))
 
 
 class MyFavoritesView(APIView):
-    """Mes biens favoris"""
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=['Properties'], summary="Mes biens favoris")
     def get(self, request):
         liked = Property.objects.filter(
             likes__user=request.user
         ).select_related('agent', 'owner').prefetch_related('photos')
-        serializer = PropertyListSerializer(liked, many=True, context={'request': request})
-        return Response(success_response(serializer.data))
+        paginator  = StandardResultsSetPagination()
+        page_data  = paginator.paginate_queryset(liked, request)
+        serializer = PropertyListSerializer(page_data, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
 
 
 class AgentPropertiesView(APIView):
-    """Biens gérés par l'agent connecté"""
     permission_classes = [IsAuthenticated, IsAgent]
 
-    @extend_schema(tags=['Properties'], summary="Mes biens gérés")
     def get(self, request):
         properties = Property.objects.filter(
             agent=request.user
-        ).select_related('owner').prefetch_related('photos')
-        serializer = PropertyDetailSerializer(properties, many=True, context={'request': request})
-        return Response(success_response(serializer.data))
+        ).select_related('owner').prefetch_related('photos').order_by('-created_at')
+        paginator  = StandardResultsSetPagination()
+        page_data  = paginator.paginate_queryset(properties, request)
+        serializer = PropertyDetailSerializer(page_data, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
 
 
 class UploadPropertyPhotosView(APIView):
-    """Upload photos pour un bien"""
     permission_classes = [IsAuthenticated, IsAgent]
+    throttle_classes   = [UploadThrottle]
 
-    @extend_schema(tags=['Properties'], summary="Uploader des photos")
     def post(self, request, property_id):
+        from core.validators import validate_image_file
         try:
             prop = Property.objects.get(id=property_id, agent=request.user)
         except Property.DoesNotExist:
@@ -274,29 +243,68 @@ class UploadPropertyPhotosView(APIView):
 
         photos = request.FILES.getlist('photos')
         if not photos:
-            return Response(error_response("Aucune photo fournie"), status=status.HTTP_400_BAD_REQUEST)
+            return Response(error_response("Aucune photo"), status=status.HTTP_400_BAD_REQUEST)
 
         existing_count = prop.photos.count()
         if existing_count + len(photos) > 30:
-            return Response(
-                error_response(f"Maximum 30 photos. Vous en avez déjà {existing_count}."),
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(error_response(f"Maximum 30 photos. Vous en avez {existing_count}."), status=status.HTTP_400_BAD_REQUEST)
 
-        created_photos = []
+        # Valider chaque photo
+        for photo in photos:
+            try:
+                validate_image_file(photo)
+            except Exception as e:
+                return Response(error_response(str(e)), status=status.HTTP_400_BAD_REQUEST)
+
+        from core.compression import compress_image
+        created = []
         for i, photo in enumerate(photos):
+            # Compresser avant stockage
+            compressed_photo = compress_image(photo)
             p = PropertyPhoto.objects.create(
-                property=prop,
-                photo=photo,
+                property=prop, photo=compressed_photo,
                 order=existing_count + i,
                 is_cover=(existing_count == 0 and i == 0)
             )
-            created_photos.append(p)
+            created.append(p)
 
         return Response(
-            success_response(
-                {'photos_added': len(created_photos)},
-                f"{len(created_photos)} photo(s) ajoutée(s)"
-            ),
+            success_response({'photos_added': len(created)}, f"{len(created)} photo(s) ajoutée(s)"),
             status=status.HTTP_201_CREATED
         )
+
+
+class AIMatchView(APIView):
+    """Recommandations IA personnalisées pour le client"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.ai_match import get_recommendations_for_user
+        from .serializers import PropertyListSerializer
+
+        if request.user.role not in ['client', 'tenant']:
+            return Response(
+                error_response("Réservé aux clients"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        recommendations = get_recommendations_for_user(request.user, limit=10)
+
+        result = []
+        for rec in recommendations:
+            prop = rec['property']
+            serializer = PropertyListSerializer(prop, context={'request': request})
+            data = serializer.data
+            data['ai_match_score'] = rec['score']
+            data['ai_match_label'] = (
+                "Excellent" if rec['score'] >= 80 else
+                "Très bon"  if rec['score'] >= 60 else
+                "Bon"       if rec['score'] >= 40 else
+                "Possible"
+            )
+            result.append(data)
+
+        return Response(success_response({
+            'total': len(result),
+            'recommendations': result
+        }))

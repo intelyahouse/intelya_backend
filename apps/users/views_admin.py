@@ -23,12 +23,20 @@ class AdminStatsView(APIView):
         from apps.payments.models import Transaction
         from apps.boost.models import Boost
 
-        # Utilisateurs
-        total_users    = User.objects.count()
-        total_agents   = User.objects.filter(role='agent', is_validated=True).count()
-        total_owners   = User.objects.filter(role='owner', is_validated=True).count()
-        total_clients  = User.objects.filter(role__in=['client', 'tenant']).count()
-        pending_validation = User.objects.filter(validation_status='pending', role__in=['agent', 'owner']).count()
+        # Utilisateurs — une seule requête avec annotation
+        from django.db.models import Count, Q
+        user_stats = User.objects.aggregate(
+            total=Count('id'),
+            agents=Count('id', filter=Q(role='agent', is_validated=True)),
+            owners=Count('id', filter=Q(role='owner', is_validated=True)),
+            clients=Count('id', filter=Q(role__in=['client', 'tenant'])),
+            pending=Count('id', filter=Q(validation_status='pending', role__in=['agent', 'owner'])),
+        )
+        total_users        = user_stats['total']
+        total_agents       = user_stats['agents']
+        total_owners       = user_stats['owners']
+        total_clients      = user_stats['clients']
+        pending_validation = user_stats['pending']
 
         # Biens
         total_properties   = Property.objects.count()
@@ -199,8 +207,18 @@ class AdminDisputesView(APIView):
     def get(self, request):
         from apps.disputes.models import Dispute
         from apps.disputes.serializers import DisputeSerializer
-        disputes = Dispute.objects.all().order_by('-created_at')
-        return Response(success_response(DisputeSerializer(disputes, many=True).data))
+        from core.pagination import StandardResultsSetPagination
+        disputes = Dispute.objects.all().select_related(
+            'claimant', 'defendant'
+        ).order_by('-created_at')
+        status_ = request.query_params.get('status')
+        if status_:
+            disputes = disputes.filter(status=status_)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(disputes, request)
+        return paginator.get_paginated_response(
+            DisputeSerializer(page, many=True).data
+        )
 
     @extend_schema(tags=['Admin'], summary="Décision sur un litige")
     def post(self, request, dispute_id):
@@ -223,6 +241,41 @@ class AdminDisputesView(APIView):
         dispute.decided_at    = timezone.now()
         dispute.status        = 'resolved'
         dispute.save()
+
+        # Libérer l'escrow selon la décision
+        if dispute.related_transaction_id:
+            try:
+                from apps.payments.models import Escrow
+                from apps.payments.services.campay import campay_service
+                escrow = Escrow.objects.filter(
+                    transaction_id=dispute.related_transaction_id,
+                    status='held'
+                ).first()
+                if escrow:
+                    if decision == 'claimant_wins':
+                        # Rembourser le plaignant
+                        campay_service.disburse(
+                            phone=dispute.claimant.phone,
+                            amount=int(escrow.amount),
+                            reference=f"DISPUTE-WIN-{dispute.id}"
+                        )
+                    elif decision == 'defendant_wins':
+                        # Libérer au défendeur
+                        campay_service.disburse(
+                            phone=dispute.defendant.phone,
+                            amount=int(escrow.amount),
+                            reference=f"DISPUTE-DEF-{dispute.id}"
+                        )
+                    escrow.status = 'released'
+                    escrow.released_at = timezone.now()
+                    escrow.released_by = request.user
+                    escrow.save()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[ESCROW LITIGE] {e}")
+
+        from core.audit import log_dispute_decided
+        log_dispute_decided(request.user, dispute, decision, request)
 
         return Response(success_response(
             DisputeSerializer(dispute).data,
@@ -277,9 +330,12 @@ class AdminAllPropertiesView(APIView):
             properties = properties.filter(city__icontains=city)
         if status_:
             properties = properties.filter(status=status_)
-        return Response(success_response(
-            PropertyAdminSerializer(properties, many=True, context={'request': request}).data
-        ))
+        from core.pagination import StandardResultsSetPagination
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(properties, request)
+        return paginator.get_paginated_response(
+            PropertyAdminSerializer(page, many=True, context={'request': request}).data
+        )
 
     @extend_schema(tags=['Admin'], summary="Suspendre ou activer un bien")
     def patch(self, request, property_id):
@@ -302,16 +358,21 @@ class AdminAllTransactionsView(APIView):
     def get(self, request):
         from apps.payments.models import Transaction
         from apps.payments.serializers import TransactionSerializer
-        transactions = Transaction.objects.all().order_by('-created_at')
+        from core.pagination import StandardResultsSetPagination
+        transactions = Transaction.objects.all().select_related(
+            'payer', 'receiver'
+        ).order_by('-created_at')
         status_ = request.query_params.get('status')
         t_type  = request.query_params.get('type')
         if status_:
             transactions = transactions.filter(status=status_)
         if t_type:
             transactions = transactions.filter(transaction_type=t_type)
-        return Response(success_response(
-            TransactionSerializer(transactions, many=True).data
-        ))
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(transactions, request)
+        return paginator.get_paginated_response(
+            TransactionSerializer(page, many=True).data
+        )
 
 
 class AdminAllReportsView(APIView):
@@ -322,8 +383,15 @@ class AdminAllReportsView(APIView):
     def get(self, request):
         from apps.disputes.models import Report
         from apps.disputes.serializers import ReportSerializer
-        reports = Report.objects.all().order_by('-created_at')
-        return Response(success_response(ReportSerializer(reports, many=True).data))
+        from core.pagination import StandardResultsSetPagination
+        reports = Report.objects.all().select_related(
+            'reporter', 'reported'
+        ).order_by('-created_at')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(reports, request)
+        return paginator.get_paginated_response(
+            ReportSerializer(page, many=True).data
+        )
 
     @extend_schema(tags=['Admin'], summary="Traiter un signalement")
     def post(self, request, report_id):
@@ -430,6 +498,9 @@ class AdminAllLeasesView(APIView):
         status_ = request.query_params.get('status')
         if status_:
             leases = leases.filter(status=status_)
-        return Response(success_response(
-            LeaseContractSerializer(leases, many=True).data
-        ))
+        from core.pagination import StandardResultsSetPagination
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(leases, request)
+        return paginator.get_paginated_response(
+            LeaseContractSerializer(page, many=True).data
+        )
