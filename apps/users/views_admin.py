@@ -170,11 +170,25 @@ class AdminAllUsersView(APIView):
     @extend_schema(tags=['Admin'], summary="Tous les utilisateurs")
     def get(self, request):
         from apps.users.serializers import UserProfileSerializer
+        from core.pagination import StandardResultsSetPagination
         role = request.query_params.get('role', '')
+        search = request.query_params.get('search', '')
         users = User.objects.all().order_by('-date_joined')
         if role:
             users = users.filter(role=role)
-        return Response(success_response(UserProfileSerializer(users, many=True).data))
+        if search:
+            users = users.filter(
+                email__icontains=search
+            ) | users.filter(
+                phone__icontains=search
+            ) | users.filter(
+                first_name__icontains=search
+            )
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(users, request)
+        return paginator.get_paginated_response(
+            UserProfileSerializer(page, many=True).data
+        )
 
 
 class AdminDisputesView(APIView):

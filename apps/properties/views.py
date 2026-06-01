@@ -13,6 +13,7 @@ from .serializers import (
 from apps.agents.models import ClientAgentRelation
 from core.permissions import IsAgent, IsAdmin
 from core.utils import success_response, error_response
+from django.core.cache import cache
 
 User = get_user_model()
 
@@ -79,6 +80,16 @@ class PropertyListView(APIView):
                     combined, many=True, context={'request': request}
                 )
                 return Response(success_response(serializer.data))
+
+        # Cache Redis 5 minutes pour les recherches sans utilisateur connecté
+        if not request.user.is_authenticated:
+            cache_key = f"properties_{city}_{neighborhood}_{prop_type}_{min_price}_{max_price}_{bedrooms}"
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(success_response(cached))
+            serializer = PropertyListSerializer(queryset, many=True, context={'request': request})
+            cache.set(cache_key, serializer.data, 300)
+            return Response(success_response(serializer.data))
 
         serializer = PropertyListSerializer(queryset, many=True, context={'request': request})
         return Response(success_response(serializer.data))
