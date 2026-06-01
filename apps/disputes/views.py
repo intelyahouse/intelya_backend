@@ -56,9 +56,14 @@ class MyDisputesView(APIView):
 
     @extend_schema(tags=['Disputes'], summary="Mes litiges")
     def get(self, request):
+        from core.pagination import StandardResultsSetPagination
         disputes = Dispute.objects.filter(claimant=request.user) | Dispute.objects.filter(defendant=request.user)
         disputes = disputes.order_by('-created_at')
-        return Response(success_response(DisputeSerializer(disputes, many=True).data))
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(disputes, request)
+        return paginator.get_paginated_response(
+            DisputeSerializer(page, many=True).data
+        )
 
 
 class CreateReportView(APIView):

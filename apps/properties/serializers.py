@@ -53,7 +53,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     photos       = PropertyPhotoSerializer(many=True, read_only=True)
     cover_photo  = serializers.SerializerMethodField()
     agent_name   = serializers.CharField(source='agent.get_full_name', read_only=True)
-    agent_phone  = serializers.CharField(source='agent.phone', read_only=True)
+    # agent_phone masqué — visible uniquement après bail signé
     owner_name   = serializers.CharField(source='owner.get_full_name', read_only=True)
     is_liked     = serializers.SerializerMethodField()
     has_video    = serializers.SerializerMethodField()
@@ -128,6 +128,6 @@ class CreatePropertySerializer(serializers.ModelSerializer):
         ]
 
     def validate_description(self, value):
-        if len(value.split()) < 10:
-            raise serializers.ValidationError("La description doit contenir au minimum 10 mots.")
+        if len(value.split()) < 50:
+            raise serializers.ValidationError("La description doit contenir au minimum 50 mots.")
         return value

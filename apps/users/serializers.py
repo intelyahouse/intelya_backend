@@ -4,6 +4,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
 from .models import OTPVerification, Blacklist
+from core.validators import validate_phone_cameroon
 import random
 import string
 
@@ -27,6 +28,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value.lower()
 
     def validate_phone(self, value):
+        try:
+            validate_phone_cameroon(value)
+        except Exception as e:
+            from rest_framework import serializers as ser
+            raise ser.ValidationError(str(e))
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("Ce téléphone est déjà utilisé.")
         if Blacklist.objects.filter(phone=value).exists():

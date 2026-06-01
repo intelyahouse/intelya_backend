@@ -107,13 +107,47 @@ class StartConversationView(APIView):
         except User.DoesNotExist:
             return Response(error_response("Utilisateur introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        # Déterminer le type de conversation
-        roles = sorted([request.user.role, other_user.role])
+        # Vérification de relation autorisée
+        from apps.agents.models import ClientAgentRelation, OwnerAgentRelation
+        user_role  = request.user.role
+        other_role = other_user.role
+
+        allowed = False
         conv_type = 'client_agent'
-        if 'agent' in roles and 'owner' in roles:
+
+        if user_role in ['client', 'tenant'] and other_role == 'agent':
+            allowed = ClientAgentRelation.objects.filter(
+                client=request.user, agent=other_user, is_active=True
+            ).exists()
+            conv_type = 'client_agent'
+        elif user_role == 'agent' and other_role in ['client', 'tenant']:
+            allowed = ClientAgentRelation.objects.filter(
+                client=other_user, agent=request.user, is_active=True
+            ).exists()
+            conv_type = 'client_agent'
+        elif user_role == 'agent' and other_role == 'owner':
+            allowed = OwnerAgentRelation.objects.filter(
+                owner=other_user, agent=request.user, status='active'
+            ).exists()
             conv_type = 'agent_owner'
-        elif 'owner' in roles and 'tenant' in roles:
+        elif user_role == 'owner' and other_role == 'agent':
+            allowed = OwnerAgentRelation.objects.filter(
+                owner=request.user, agent=other_user, status='active'
+            ).exists()
+            conv_type = 'agent_owner'
+        elif user_role in ['owner', 'agent'] and other_role == 'tenant':
             conv_type = 'owner_tenant'
+            allowed = True
+        elif user_role == 'admin':
+            allowed = True
+
+        if not allowed:
+            return Response(
+                error_response("Vous n'êtes pas autorisé à contacter cet utilisateur"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        roles = sorted([request.user.role, other_user.role])
 
         # Chercher une conversation existante
         existing = Conversation.objects.filter(

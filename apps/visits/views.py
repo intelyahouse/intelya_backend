@@ -219,6 +219,24 @@ class CancelVisitView(APIView):
 
         if not visit.is_free and visit.payment_status == 'paid':
             visit.payment_status = 'refunded'
+            # Déclencher remboursement réel via Campay
+            try:
+                from apps.payments.models import Transaction
+                transaction = Transaction.objects.filter(
+                    related_visit_id=visit.id,
+                    status='completed'
+                ).first()
+                if transaction:
+                    from apps.payments.services.campay import campay_service
+                    campay_service.disburse(
+                        phone=visit.client.phone,
+                        amount=int(visit.visit_fee),
+                        reference=f"REFUND-{transaction.reference}",
+                        description="Remboursement annulation visite INTELYA HAVEN"
+                    )
+                    logger.info(f"[REMBOURSEMENT] Visite {visit.id} remboursée")
+            except Exception as e:
+                logger.error(f"[REMBOURSEMENT] Erreur: {e}")
 
         visit.save()
         return Response(success_response(message="Visite annulée"))

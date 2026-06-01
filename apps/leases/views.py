@@ -29,8 +29,13 @@ class MyRentPaymentsView(APIView):
         else:
             payments = RentPayment.objects.all()
 
-        serializer = RentPaymentSerializer(payments, many=True)
-        return Response(success_response(serializer.data))
+        from core.pagination import StandardResultsSetPagination
+        payments = payments.order_by('-due_date')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(payments, request)
+        return paginator.get_paginated_response(
+            RentPaymentSerializer(page, many=True).data
+        )
 
 
 class ConfirmCashPaymentView(APIView):
@@ -188,8 +193,13 @@ class MyComplaintsView(APIView):
         else:
             complaints = Complaint.objects.filter(assigned_to=request.user)
 
-        serializer = ComplaintSerializer(complaints, many=True)
-        return Response(success_response(serializer.data))
+        from core.pagination import StandardResultsSetPagination
+        complaints = complaints.order_by('-created_at')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(complaints, request)
+        return paginator.get_paginated_response(
+            ComplaintSerializer(page, many=True).data
+        )
 
 
 class ResolveComplaintView(APIView):

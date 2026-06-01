@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from core.health import HealthCheckView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -59,8 +60,6 @@ api_v1_patterns = [
 
     # Parrainage
     path('referrals/', include('apps.referrals.urls')),
-    path('reviews/', include('apps.reviews.urls')),
-    path('disputes/', include('apps.disputes.urls')),
 ]
 
 urlpatterns = [
@@ -77,8 +76,11 @@ urlpatterns = [
 
     # OAuth
     path('accounts/', include('allauth.urls')),
+    path('api/health/', HealthCheckView.as_view(), name='health'),
+    path('api/v1/health/', HealthCheckView.as_view(), name='health-v1'),
 ]
 
 # Fichiers media en développement
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Ajoute avant la dernière ligne

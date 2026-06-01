@@ -135,6 +135,23 @@ class CampayWebhookView(APIView):
 
     @extend_schema(tags=['Payments'], summary="Webhook Campay (MTN + Orange)")
     def post(self, request):
+        # Vérification signature Campay
+        import hmac
+        import hashlib
+        from django.conf import settings
+
+        signature = request.headers.get('X-Campay-Signature', '')
+        secret    = getattr(settings, 'CAMPAY_WEBHOOK_SECRET', '')
+
+        if secret:
+            body = request.body
+            expected = hmac.new(
+                secret.encode(), body, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(signature, expected):
+                logger.warning("[WEBHOOK CAMPAY] Signature invalide !")
+                return Response({'status': 'invalid_signature'}, status=401)
+
         data      = request.data
         reference = data.get('reference') or data.get('external_reference')
         status_   = data.get('status', '').upper()
@@ -215,14 +232,18 @@ class MyTransactionsView(APIView):
 
     @extend_schema(tags=['Payments'], summary="Mes transactions")
     def get(self, request):
+        from core.pagination import StandardResultsSetPagination
         transactions = Transaction.objects.filter(
             payer=request.user
         ) | Transaction.objects.filter(
             receiver=request.user
         )
         transactions = transactions.order_by('-created_at')
-        serializer = TransactionSerializer(transactions, many=True)
-        return Response(success_response(serializer.data))
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(transactions, request)
+        return paginator.get_paginated_response(
+            TransactionSerializer(page, many=True).data
+        )
 
 
 class CheckPaymentStatusView(APIView):

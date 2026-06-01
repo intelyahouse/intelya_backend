@@ -112,6 +112,8 @@ DATABASES = {
         'OPTIONS': {
             'connect_timeout': 10,
         },
+        'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
@@ -167,6 +169,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+    },
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
     ),
@@ -359,3 +370,53 @@ if os.environ.get("USE_S3", "False") == "True":
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
     AWS_S3_FILE_OVERWRITE = False
     MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
+
+# ===================================
+# LIMITES DE SÉCURITÉ
+# ===================================
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB max upload
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB max upload
+
+
+# ===================================
+# LOGGING ET AUDIT
+# ===================================
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'audit': {
+            'format': '{asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'audit_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/audit.log',
+            'maxBytes': 10 * 1024 * 1024,
+            'backupCount': 5,
+            'formatter': 'audit',
+        },
+    },
+    'loggers': {
+        'intelya.audit': {
+            'handlers': ['console', 'audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+        },
+    },
+}

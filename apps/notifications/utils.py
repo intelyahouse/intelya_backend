@@ -90,3 +90,27 @@ def notify_complaint_new(assigned_to, tenant_name, category):
         title="Nouvelle plainte",
         body=f"{tenant_name} a soumis une plainte : {category}",
     )
+
+
+def notify_bulk(users, notification_type, title, body, data=None):
+    """
+    Envoie une notification a plusieurs utilisateurs en UNE seule requete SQL.
+    Utiliser pour les notifications de masse.
+    """
+    from .models import Notification
+    notifications = [
+        Notification(
+            recipient=user,
+            notification_type=notification_type,
+            title=title,
+            body=body,
+            data=data or {}
+        )
+        for user in users
+    ]
+    Notification.objects.bulk_create(notifications, batch_size=1000)
+
+    # Push en arriere-plan via Celery
+    from .tasks import send_bulk_push_task
+    user_ids = [str(u.id) for u in users]
+    send_bulk_push_task.delay(user_ids, title, body, data or {})

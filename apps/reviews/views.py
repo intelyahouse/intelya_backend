@@ -18,14 +18,13 @@ class PropertyReviewsView(APIView):
             rental_property_id=property_id,
             gps_verified=True
         ).select_related('reviewer')
-        avg_rating = None
-        if reviews.exists():
-            ratings = [r.property_rating for r in reviews if r.property_rating]
-            avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else None
+        from django.db.models import Avg
+        avg = reviews.aggregate(avg=Avg('property_rating'))['avg']
+        avg_rating = round(avg, 1) if avg else None
         return Response(success_response({
             'average_rating': avg_rating,
             'total_reviews': reviews.count(),
-            'reviews': ReviewSerializer(reviews, many=True).data
+            'reviews': ReviewSerializer(reviews[:50], many=True).data
         }))
 
 
@@ -38,12 +37,13 @@ class AgentReviewsView(APIView):
             agent_id=agent_id,
             gps_verified=True
         ).select_related('reviewer')
-        ratings = [r.agent_rating for r in reviews if r.agent_rating]
-        avg = round(sum(ratings) / len(ratings), 1) if ratings else None
+        from django.db.models import Avg
+        avg_data = reviews.aggregate(avg=Avg('agent_rating'))
+        avg = round(avg_data['avg'], 1) if avg_data['avg'] else None
         return Response(success_response({
             'average_rating': avg,
             'total_reviews': reviews.count(),
-            'reviews': ReviewSerializer(reviews, many=True).data
+            'reviews': ReviewSerializer(reviews[:50], many=True).data
         }))
 
 

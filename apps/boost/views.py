@@ -57,23 +57,56 @@ class ActivateBoostView(APIView):
             is_active=True
         ).update(is_active=False)
 
-        boost = Boost.objects.create(
-            agent       = request.user,
-            level       = level,
-            duration_days = duration,
-            target_city = data['target_city'],
-            target_neighborhood = data.get('target_neighborhood', ''),
-            price_paid  = price,
-            is_active   = True,
-            start_date  = timezone.now(),
-            end_date    = timezone.now() + timedelta(days=duration),
+        # Vérifier le paiement avant d'activer le boost
+        from apps.payments.models import Transaction
+        from core.utils import generate_transaction_reference
+        from apps.payments.services.campay import campay_service
+
+        phone = data.get('phone_number', request.user.phone)
+        reference = generate_transaction_reference()
+
+        # Initier le paiement du boost
+        payment_result = campay_service.collect(
+            phone=phone,
+            amount=int(price),
+            reference=reference,
+            description=f"Boost {level.upper()} INTELYA HAVEN"
         )
 
+        # Créer la transaction boost
+        Transaction.objects.create(
+            reference=reference,
+            payer=request.user,
+            transaction_type='boost',
+            amount=price,
+            platform_fee=price,
+            net_amount=0,
+            currency='FCFA',
+            status='processing' if payment_result.get('success') else 'pending',
+            payment_method=data.get('payment_method', 'mtn'),
+        )
+
+        boost = Boost.objects.create(
+            agent               = request.user,
+            level               = level,
+            duration_days       = duration,
+            target_city         = data['target_city'],
+            target_neighborhood = data.get('target_neighborhood', ''),
+            price_paid          = price,
+            is_active           = False,  # Activé après confirmation paiement
+            start_date          = timezone.now(),
+            end_date            = timezone.now() + timedelta(days=duration),
+            payment_reference   = reference,
+        )
+
+        msg = f"Boost {level.upper()} en attente de paiement. Validez {int(price)} FCFA sur votre téléphone."
+        if not payment_result.get('success'):
+            msg = f"Boost {level.upper()} créé (mode test). En production, le paiement sera requis."
+            boost.is_active = True
+            boost.save(update_fields=['is_active'])
+
         return Response(
-            success_response(
-                BoostSerializer(boost).data,
-                f"Boost {level.upper()} activé pour {duration} jours sur {data['target_city']} ✅"
-            ),
+            success_response(BoostSerializer(boost).data, msg),
             status=status.HTTP_201_CREATED
         )
 
@@ -86,11 +119,14 @@ class MyBoostsView(APIView):
     def get(self, request):
         boosts = Boost.objects.filter(agent=request.user).order_by('-created_at')
 
-        # Désactiver automatiquement les expirés
-        for boost in boosts:
-            if boost.is_active and boost.is_expired():
-                boost.is_active = False
-                boost.save(update_fields=['is_active'])
+        # Désactiver en une seule requête SQL
+        now = timezone.now()
+        Boost.objects.filter(
+            agent=request.user,
+            is_active=True,
+            end_date__lte=now
+        ).update(is_active=False)
 
+        boosts = Boost.objects.filter(agent=request.user).order_by('-created_at')
         serializer = BoostSerializer(boosts, many=True)
         return Response(success_response(serializer.data))
