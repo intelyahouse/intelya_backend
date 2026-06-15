@@ -1,7 +1,22 @@
 import uuid
+import random
+import string
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
+
+
+def _generate_referral_code():
+    chars = string.ascii_uppercase + string.digits
+    from django.contrib.auth import get_user_model
+    while True:
+        code = ''.join(random.choices(chars, k=8))
+        try:
+            User = get_user_model()
+            if not User.objects.filter(referral_code=code).exists():
+                return code
+        except Exception:
+            return code
 
 
 class UserManager(BaseUserManager):
@@ -9,6 +24,13 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Email obligatoire")
         email = self.normalize_email(email)
+        if not extra_fields.get('referral_code'):
+            chars = string.ascii_uppercase + string.digits
+            while True:
+                code = ''.join(random.choices(chars, k=8))
+                if not self.model.objects.filter(referral_code=code).exists():
+                    extra_fields['referral_code'] = code
+                    break
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)

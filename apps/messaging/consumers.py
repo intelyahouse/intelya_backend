@@ -41,12 +41,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         try:
+            # Vérifier que l'utilisateur n'est pas bloqué
+            is_still_active = await self.check_user_still_active()
+            if not is_still_active:
+                await self.close(code=4003)
+                return
+
             data = json.loads(text_data)
             content = data.get('content', '').strip()
             if not content:
                 return
             if len(content) > 4000:
                 await self.send(json.dumps({'error': 'Message trop long (max 4000 caractères)'}))
+                return
+            if len(content) < 1:
                 return
 
             message = await self.save_message(self.user, content)
@@ -103,6 +111,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return user if user.is_active and not user.is_blocked else None
         except Exception:
             return None
+
+    @database_sync_to_async
+    def check_user_still_active(self):
+        """Vérifie que l'utilisateur est toujours actif et non bloqué"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            user = User.objects.get(id=self.user.id)
+            return user.is_active and not user.is_blocked
+        except Exception:
+            return False
 
     @database_sync_to_async
     def check_access(self):

@@ -60,6 +60,8 @@ api_v1_patterns = [
 
     # Parrainage
     path('referrals/', include('apps.referrals.urls')),
+    # Admin Panel API
+    path('admin-panel/', include('apps.users.urls.admin_urls')),
 ]
 
 urlpatterns = [
@@ -83,4 +85,13 @@ urlpatterns = [
 # Fichiers media en développement
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-# Ajoute avant la dernière ligne
+
+
+
+# ===================================
+# Handlers d'erreurs globaux
+# ===================================
+handler400 = 'core.error_handlers.bad_request'
+handler403 = 'core.error_handlers.permission_denied'
+handler404 = 'core.error_handlers.page_not_found'
+handler500 = 'core.error_handlers.server_error'

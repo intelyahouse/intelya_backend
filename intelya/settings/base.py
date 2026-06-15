@@ -57,6 +57,9 @@ LOCAL_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
+    'core.middleware.BlockSuspiciousRequestsMiddleware',
+    'core.middleware.SecurityHeadersMiddleware',
+    'core.middleware.RequestLoggingMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -102,6 +105,7 @@ DATABASES = {
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
         'CONN_MAX_AGE': 600,  # Garder les connexions 10 minutes
+        'CONN_HEALTH_CHECKS': True,  # Vérifier les connexions mortes
         'OPTIONS': {
             'connect_timeout': 10,
             'options': '-c default_transaction_isolation=read\ committed',
@@ -294,8 +298,8 @@ LANGUAGES = [('fr', 'Français'), ('en', 'English')]
 # ===================================
 # SÉCURITÉ UPLOAD
 # ===================================
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024    # 10 MB pour les données
+FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024   # 200 MB pour les vidéos
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
 # ===================================
@@ -334,9 +338,10 @@ MTN_MOMO_API_KEY = config('MTN_MOMO_API_KEY', default='')
 MTN_MOMO_API_URL = config('MTN_MOMO_API_URL', default='')
 BANK_API_KEY = config('BANK_API_KEY', default='')
 BANK_API_URL = config('BANK_API_URL', default='')
-CAMPAY_USERNAME = config('CAMPAY_USERNAME', default='')
-CAMPAY_PASSWORD = config('CAMPAY_PASSWORD', default='')
+CAMPAY_USERNAME      = config('CAMPAY_USERNAME', default='')
+CAMPAY_PASSWORD      = config('CAMPAY_PASSWORD', default='')
 CAMPAY_WEBHOOK_SECRET = config('CAMPAY_WEBHOOK_SECRET', default='')
+CAMPAY_API_URL       = config('CAMPAY_API_URL', default='https://demo.campay.net/api')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -422,3 +427,104 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=6, minute=0, day_of_month=1),
     },
 }
+
+
+# ===================================
+# DJANGO-AXES — Protection brute force
+# ===================================
+INSTALLED_APPS += [
+    'axes',
+    'cachalot',
+    'simple_history',
+    'dbbackup',
+]
+
+MIDDLEWARE += [
+    'csp.middleware.CSPMiddleware',
+    'compression_middleware.middleware.CompressionMiddleware',
+    'axes.middleware.AxesMiddleware',
+]
+
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+# Bloquer après 5 tentatives échouées
+AXES_ENABLED       = True  # Désactivé en test via conftest.py
+AXES_FAILURE_LIMIT = 5
+AXES_NEVER_LOCKOUT_WHITELIST = True
+AXES_WHITELIST_CALLABLE = None
+# Ne pas compter les succès — seulement les échecs
+AXES_RESET_ON_SUCCESS = True
+# Ignorer les endpoints publics
+AXES_IGNORE_URLS = [
+    '/api/v1/auth/register/',
+    '/api/v1/auth/verify-otp/',
+    '/api/v1/auth/resend-otp/',
+    '/api/v1/auth/forgot-password/',
+    '/api/v1/auth/reset-password/',
+]
+AXES_COOLOFF_TIME = 1  # 1 heure de blocage
+AXES_LOCKOUT_CALLABLE = None
+AXES_RESET_ON_SUCCESS = True
+AXES_ENABLE_ADMIN = True
+AXES_IP_BLACKLIST = []  # IPs toujours bloquées
+AXES_NEVER_LOCKOUT_ALLOWLIST = ['127.0.0.1']  # IPs jamais bloquées
+
+# ===================================
+# CONTENT SECURITY POLICY
+# ===================================
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC  = ("'self'", "'unsafe-inline'", "https://apis.google.com")
+CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
+CSP_IMG_SRC     = ("'self'", "data:", "https:", "blob:")
+CSP_FONT_SRC    = ("'self'", "https://fonts.gstatic.com")
+CSP_CONNECT_SRC = ("'self'", "https://api.campay.net", "https://demo.campay.net")
+CSP_FRAME_SRC   = ("'none'",)
+CSP_OBJECT_SRC  = ("'none'",)
+CSP_BASE_URI    = ("'self'",)
+
+# ===================================
+# DJANGO-CACHALOT — Cache auto requêtes
+# ===================================
+CACHALOT_ENABLED = True
+CACHALOT_CACHE   = 'default'
+CACHALOT_TIMEOUT = 300  # 5 minutes
+CACHALOT_UNCACHABLE_TABLES = [
+    'django_migrations',
+    'axes_accessattempt',
+    'axes_accesslog',
+]
+
+# ===================================
+# CELERY REDBEAT — Scheduler distribué
+# ===================================
+CELERY_BEAT_SCHEDULER = 'redbeat.RedBeatScheduler'
+REDBEAT_REDIS_URL     = config('REDIS_URL', default='redis://localhost:6379/0')
+
+# ===================================
+# DJANGO-SIMPLE-HISTORY — Audit trail
+# ===================================
+SIMPLE_HISTORY_HISTORY_CHANGE_REASON_USE_TEXT_FIELD = True
+
+# ===================================
+# DJANGO-DBBACKUP — Sauvegardes DB
+# ===================================
+DBBACKUP_STORAGE = 'django.core.files.storage.FileSystemStorage'
+DBBACKUP_STORAGE_OPTIONS = {'location': str(BASE_DIR / 'backups')}
+import os
+os.makedirs(BASE_DIR / 'backups', exist_ok=True)
+
+# ===================================
+# HEALTH CHECKS
+# ===================================
+INSTALLED_APPS += [
+    'health_check',
+    'health_check.db',
+    'health_check.cache',
+    'health_check.storage',
+    'health_check.contrib.celery',
+    'health_check.contrib.redis',
+]

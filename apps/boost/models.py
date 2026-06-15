@@ -38,13 +38,15 @@ class Boost(models.Model):
     start_date   = models.DateTimeField(default=timezone.now)
     end_date     = models.DateTimeField()
 
-    transaction  = models.ForeignKey(
-        'payments.Transaction',
+    transaction        = models.ForeignKey(
+        "payments.Transaction",
         on_delete=models.SET_NULL,
         null=True, blank=True
     )
+    payment_reference  = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    payment_verified   = models.BooleanField(default=False, db_index=True)
 
-    created_at   = models.DateTimeField(auto_now_add=True)
+    created_at         = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Boost Agent'

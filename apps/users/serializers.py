@@ -48,6 +48,18 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Le nom est obligatoire.")
         return data
 
+    def validate_first_name(self, value):
+        if '<' in value or '>' in value or 'script' in value.lower():
+            from rest_framework import serializers
+            raise serializers.ValidationError("Caractères non autorisés.")
+        return value.strip()
+
+    def validate_last_name(self, value):
+        if '<' in value or '>' in value or 'script' in value.lower():
+            from rest_framework import serializers
+            raise serializers.ValidationError("Caractères non autorisés.")
+        return value.strip()
+
     def create(self, validated_data):
         validated_data.pop('confirm_password')
         referral_code = self._generate_referral_code()

@@ -126,7 +126,8 @@ class LoginView(APIView):
             )
 
         user.login_attempts = 0
-        user.save(update_fields=['login_attempts'])
+        user.last_login_attempt = None
+        user.save(update_fields=['login_attempts', 'last_login_attempt'])
 
         refresh = RefreshToken.for_user(user)
         return Response(success_response({

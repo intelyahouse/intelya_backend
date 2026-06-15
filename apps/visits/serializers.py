@@ -5,9 +5,9 @@ from .models import VisitRequest, VisitReview
 class VisitRequestSerializer(serializers.ModelSerializer):
     client_name          = serializers.CharField(source='client.get_full_name', read_only=True)
     agent_name           = serializers.CharField(source='agent.get_full_name', read_only=True)
-    property_title       = serializers.CharField(source='rental_property.title', read_only=True)
-    property_city        = serializers.CharField(source='rental_property.city', read_only=True)
-    property_neighborhood = serializers.CharField(source='rental_property.neighborhood', read_only=True)
+    property_title       = serializers.CharField(source='visit_property.title', read_only=True)
+    property_city        = serializers.CharField(source='visit_property.city', read_only=True)
+    property_neighborhood = serializers.CharField(source='visit_property.neighborhood', read_only=True)
 
     class Meta:
         model  = VisitRequest

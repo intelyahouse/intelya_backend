@@ -21,7 +21,7 @@ class MyConversationsView(APIView):
     def get(self, request):
         conversations = Conversation.objects.filter(
             participants=request.user, is_active=True
-        ).prefetch_related('participants', 'messages')
+        ).prefetch_related('participants').order_by('-last_message_at')
         serializer = ConversationSerializer(
             conversations, many=True, context={'request': request}
         )
@@ -41,15 +41,21 @@ class ConversationMessagesView(APIView):
         except Conversation.DoesNotExist:
             return Response(error_response("Conversation introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        messages = conversation.messages.filter(is_deleted=False)
+        from core.pagination import SmallResultsSetPagination
+        messages = conversation.messages.filter(
+            is_deleted=False
+        ).select_related('sender').order_by('created_at')
 
         # Marquer les messages non lus comme lus
         messages.exclude(sender=request.user).filter(is_read=False).update(
             is_read=True, read_at=timezone.now()
         )
 
-        serializer = MessageSerializer(messages, many=True, context={'request': request})
-        return Response(success_response(serializer.data))
+        paginator = SmallResultsSetPagination()
+        page = paginator.paginate_queryset(messages, request)
+        return paginator.get_paginated_response(
+            MessageSerializer(page, many=True, context={'request': request}).data
+        )
 
     @extend_schema(
         tags=['Messaging'],
@@ -179,14 +185,20 @@ class ForumConversationsView(APIView):
 
     @extend_schema(tags=['Messaging'], summary="Forum agents — mes négociations")
     def get(self, request):
+        from core.pagination import StandardResultsSetPagination
         messages = ForumMessage.objects.filter(
             sender=request.user
         ) | ForumMessage.objects.filter(
             receiver=request.user
         )
-        messages = messages.order_by('-created_at')
-        serializer = ForumMessageSerializer(messages, many=True)
-        return Response(success_response(serializer.data))
+        messages = messages.select_related(
+            'sender', 'receiver', 'related_property'
+        ).order_by('-created_at')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(messages, request)
+        return paginator.get_paginated_response(
+            ForumMessageSerializer(page, many=True).data
+        )
 
 
 class StartForumNegotiationView(APIView):
@@ -225,7 +237,24 @@ class StartForumNegotiationView(APIView):
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
         if receiver == request.user:
-            return Response(error_response("Vous ne pouvez pas vous contacter vous-même"), status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                error_response("Vous ne pouvez pas vous contacter vous-même"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Vérifier que le bien appartient bien à l'agent destinataire
+        if prop.agent != receiver:
+            return Response(
+                error_response("Ce bien n'appartient pas à cet agent"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Vérifier que le demandeur est bien l'agent du client intéressé
+        if request.user == prop.agent:
+            return Response(
+                error_response("Ce bien vous appartient déjà"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         forum_msg = ForumMessage.objects.create(
             sender=request.user,
