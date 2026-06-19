@@ -60,13 +60,13 @@ class ActivateBoostView(APIView):
         # Vérifier le paiement avant d'activer le boost
         from apps.payments.models import Transaction
         from core.utils import generate_transaction_reference
-        from apps.payments.services.campay import campay_service
+        from apps.payments.services.kpay import kpay_service
 
         phone = data.get('phone_number', request.user.phone)
         reference = generate_transaction_reference()
 
         # Initier le paiement du boost
-        payment_result = campay_service.collect(
+        payment_result = kpay_service.collect(
             phone=phone,
             amount=int(price),
             reference=reference,

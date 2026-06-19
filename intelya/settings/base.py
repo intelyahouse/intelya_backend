@@ -271,7 +271,10 @@ AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 # ===================================
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -528,3 +531,9 @@ INSTALLED_APPS += [
     'health_check.contrib.celery',
     'health_check.contrib.redis',
 ]
+
+# K-PAY
+KPAY_API_KEY     = config('KPAY_API_KEY', default='')
+KPAY_RETAILER_ID = config('KPAY_RETAILER_ID', default='')
+KPAY_WEBHOOK_URL = config('KPAY_WEBHOOK_URL', default='')
+KPAY_REDIRECT_URL = config('KPAY_REDIRECT_URL', default='')

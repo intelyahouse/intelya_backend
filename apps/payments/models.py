@@ -42,6 +42,7 @@ class Transaction(models.Model):
     status             = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
     payment_method     = models.CharField(max_length=20, choices=METHOD_CHOICES, null=True, blank=True, db_index=True)
     external_reference = models.CharField(max_length=200, null=True, blank=True, db_index=True)
+    idempotency_key    = models.CharField(max_length=200, null=True, blank=True, db_index=True)
     operator_reference = models.CharField(max_length=200, null=True, blank=True)
     webhook_data       = models.JSONField(null=True, blank=True)
     related_lease_id   = models.UUIDField(null=True, blank=True, db_index=True)

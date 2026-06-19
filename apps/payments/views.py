@@ -10,7 +10,7 @@ from datetime import timedelta
 from drf_spectacular.utils import extend_schema
 from .models import Transaction, Escrow
 from .serializers import TransactionSerializer, InitiatePaymentSerializer
-from .services.campay import campay_service
+from .services.kpay import kpay_service
 from .services.bank import bank_service
 from core.utils import success_response, error_response, generate_transaction_reference, calculate_platform_commission
 from core.throttles import PaymentThrottle
@@ -41,17 +41,17 @@ class InitiatePaymentView(APIView):
         if amount < 100:
             return Response(error_response("Montant minimum: 100 FCFA"), status=status.HTTP_400_BAD_REQUEST)
 
-        # Clé d'idempotence — empêche double paiement
+        # Clé d'idempotence — stockée dans idempotency_key, jamais écrasée
         idempotency_key = f"{request.user.id}_{related_type}_{related_id}"
         existing = Transaction.objects.filter(
-            external_reference=idempotency_key,
+            idempotency_key=idempotency_key,
             status__in=['pending', 'processing', 'completed']
         ).first()
         if existing:
             return Response(success_response(
                 TransactionSerializer(existing).data,
                 "Transaction déjà en cours"
-            ))
+            ), status=status.HTTP_200_OK)
 
         commission_data = calculate_platform_commission(amount)
         reference = generate_transaction_reference()
@@ -69,7 +69,7 @@ class InitiatePaymentView(APIView):
                     currency='FCFA',
                     status='pending',
                     payment_method=method,
-                    external_reference=idempotency_key,
+                    idempotency_key=idempotency_key,
                     description=f"Paiement {related_type} INTELYA HAVEN",
                 )
 
@@ -86,13 +86,13 @@ class InitiatePaymentView(APIView):
         # Appeler l'API paiement (hors transaction atomique)
         payment_result = None
         if method in ['mtn', 'orange']:
-            payment_result = campay_service.collect(phone=phone, amount=int(amount), reference=reference)
+            payment_result = kpay_service.collect(phone=phone, amount=int(amount), reference=reference)
         elif method == 'bank':
             payment_result = bank_service.initiate_payment(account_number=phone, amount=int(amount), reference=reference)
 
         if payment_result and payment_result.get('success'):
             txn.status = 'processing'
-            txn.external_reference = payment_result.get('reference', idempotency_key)
+            txn.external_reference = payment_result.get('reference', '')
             txn.save(update_fields=['status', 'external_reference'])
 
             if related_type == 'visit':
@@ -144,7 +144,6 @@ class CampayWebhookView(APIView):
             except Transaction.DoesNotExist:
                 return Response({'status': 'not_found'})
 
-        # TRANSACTION ATOMIQUE — webhook
         with transaction.atomic():
             txn.webhook_data = data
             if status_ in ['SUCCESSFUL', 'SUCCESS', 'COMPLETED']:
@@ -180,7 +179,7 @@ class CampayWebhookView(APIView):
             owner_profile = lease.owner.owner_profile
             phone = owner_profile.mtn_momo_number or owner_profile.orange_money_number
             if phone and float(txn.net_amount) > 0:
-                campay_service.disburse(phone=phone, amount=int(txn.net_amount), reference=f"OWNER-{txn.reference}")
+                kpay_service.disburse(phone=phone, amount=int(txn.net_amount), reference=f"OWNER-{txn.reference}")
         except Exception as e:
             logger.error(f"[VIREMENT PROPRIO] Erreur: {e}")
 
@@ -211,7 +210,7 @@ class CheckPaymentStatusView(APIView):
             return Response(error_response("Transaction introuvable"), status=status.HTTP_404_NOT_FOUND)
 
         if txn.status == 'processing' and txn.external_reference:
-            result = campay_service.check_status(txn.external_reference)
+            result = kpay_service.check_status(txn.external_reference)
             if result.get('success') and result.get('status', '').upper() in ['SUCCESSFUL', 'COMPLETED']:
                 with transaction.atomic():
                     txn.status = 'completed'
@@ -219,3 +218,77 @@ class CheckPaymentStatusView(APIView):
                     txn.save()
 
         return Response(success_response(TransactionSerializer(txn).data))
+
+
+class KPayWebhookView(APIView):
+    """
+    Webhook K-Pay — appelé automatiquement quand un paiement est complété
+    K-Pay envoie : tid, refid, momtransactionid, payaccount, statusid, statusdesc
+    statusid: 01 = succès, 02 = échec
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        data = request.data
+        refid    = data.get('refid')
+        statusid = data.get('statusid', '02')
+        tid      = data.get('tid', '')
+
+        logger.info(f"[KPAY WEBHOOK] refid={refid} statusid={statusid} tid={tid}")
+
+        if not refid:
+            return Response({'reply': 'IGNORED'})
+
+        try:
+            txn = Transaction.objects.get(reference=refid)
+        except Transaction.DoesNotExist:
+            logger.warning(f"[KPAY WEBHOOK] Transaction introuvable: {refid}")
+            return Response({'tid': tid, 'refid': refid, 'reply': 'OK'})
+
+        with transaction.atomic():
+            txn.webhook_data = data
+            txn.external_reference = tid
+
+            if statusid == '01':
+                txn.status = 'completed'
+                txn.completed_at = timezone.now()
+                txn.save()
+
+                if hasattr(txn, 'escrow'):
+                    txn.escrow.status = 'released'
+                    txn.escrow.released_at = timezone.now()
+                    txn.escrow.save()
+
+                self._process_owner_transfer(txn)
+
+            elif statusid == '02':
+                txn.status = 'failed'
+                txn.save()
+                if hasattr(txn, 'escrow'):
+                    txn.escrow.status = 'refunded'
+                    txn.escrow.released_at = timezone.now()
+                    txn.escrow.save()
+            else:
+                txn.save(update_fields=['webhook_data'])
+
+        # K-Pay attend cette réponse exacte
+        return Response({'tid': tid, 'refid': refid, 'reply': 'OK'})
+
+    def _process_owner_transfer(self, txn):
+        if txn.transaction_type != 'rent' or not txn.related_lease_id:
+            return
+        try:
+            from apps.contracts.models import LeaseContract
+            lease = LeaseContract.objects.select_related(
+                'owner__owner_profile'
+            ).get(id=txn.related_lease_id)
+            owner_profile = lease.owner.owner_profile
+            phone = owner_profile.mtn_momo_number or owner_profile.orange_money_number
+            if phone and float(txn.net_amount) > 0:
+                kpay_service.disburse(
+                    phone=phone,
+                    amount=int(txn.net_amount),
+                    reference=f"OWNER-{txn.reference}"
+                )
+        except Exception as e:
+            logger.error(f"[KPAY VIREMENT PROPRIO] Erreur: {e}")

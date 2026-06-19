@@ -246,7 +246,7 @@ class AdminDisputesView(APIView):
         if dispute.related_transaction_id:
             try:
                 from apps.payments.models import Escrow
-                from apps.payments.services.campay import campay_service
+                from apps.payments.services.kpay import kpay_service
                 escrow = Escrow.objects.filter(
                     transaction_id=dispute.related_transaction_id,
                     status='held'
@@ -254,14 +254,14 @@ class AdminDisputesView(APIView):
                 if escrow:
                     if decision == 'claimant_wins':
                         # Rembourser le plaignant
-                        campay_service.disburse(
+                        kpay_service.disburse(
                             phone=dispute.claimant.phone,
                             amount=int(escrow.amount),
                             reference=f"DISPUTE-WIN-{dispute.id}"
                         )
                     elif decision == 'defendant_wins':
                         # Libérer au défendeur
-                        campay_service.disburse(
+                        kpay_service.disburse(
                             phone=dispute.defendant.phone,
                             amount=int(escrow.amount),
                             reference=f"DISPUTE-DEF-{dispute.id}"
