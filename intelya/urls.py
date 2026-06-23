@@ -3,6 +3,7 @@
 
 
 from django.contrib import admin
+from rest_framework_simplejwt.views import TokenRefreshView
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
@@ -79,6 +80,7 @@ urlpatterns = [
     # OAuth
     path('accounts/', include('allauth.urls')),
     path('api/health/', HealthCheckView.as_view(), name='health'),
+    path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('api/v1/health/', HealthCheckView.as_view(), name='health-v1'),
 ]
 

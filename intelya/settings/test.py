@@ -33,3 +33,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
 
 # Désactiver Cachalot en test
 CACHALOT_ENABLED = False
+
+# Permettre testserver pour les tests
+ALLOWED_HOSTS = ['*', 'testserver', 'localhost', '127.0.0.1']
