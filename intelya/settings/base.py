@@ -93,9 +93,9 @@ TEMPLATES = [
 WSGI_APPLICATION = 'intelya.wsgi.application'
 ASGI_APPLICATION = 'intelya.asgi.application'
 
-# ===================================
+
 # BASE DE DONNÉES avec Connection Pooling
-# ===================================
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
@@ -113,9 +113,9 @@ DATABASES = {
     }
 }
 
-# ===================================
+
 # CACHE Redis avec fallback gracieux
-# ===================================
+
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -133,9 +133,9 @@ CACHES = {
     }
 }
 
-# ===================================
+
 # CELERY
-# ===================================
+
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
@@ -149,9 +149,9 @@ CELERY_TASK_TIME_LIMIT = 600
 CELERY_TASK_MAX_RETRIES = 3
 CELERY_TASK_DEFAULT_RETRY_DELAY = 60  # Retry après 60 secondes
 
-# ===================================
+
 # CHANNELS WebSocket
-# ===================================
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -163,9 +163,9 @@ CHANNEL_LAYERS = {
     },
 }
 
-# ===================================
+
 # REST FRAMEWORK
-# ===================================
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -200,9 +200,9 @@ REST_FRAMEWORK = {
     },
 }
 
-# ===================================
+
 # JWT
-# ===================================
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Réduit à 30min
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -214,9 +214,9 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# ===================================
+
 # SWAGGER
-# ===================================
+
 SPECTACULAR_SETTINGS = {
     'TITLE': 'INTELYA HAVEN API',
     'DESCRIPTION': 'API complète de la plateforme immobilière INTELYA HAVEN.',
@@ -225,18 +225,18 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
 }
 
-# ===================================
+
 # CORS
-# ===================================
+
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:3000',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# ===================================
+
 # AUTH
-# ===================================
+
 AUTH_USER_MODEL = 'users.User'
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
@@ -256,9 +256,8 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
-# ===================================
 # STOCKAGE S3
-# ===================================
+
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='intelya-haven-storage')
@@ -266,9 +265,9 @@ AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='eu-west-1')
 AWS_DEFAULT_ACL = 'private'
 AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 
-# ===================================
+
 # FICHIERS
-# ===================================
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
@@ -278,9 +277,9 @@ STORAGES = {
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# ===================================
+
 # EMAIL
-# ===================================
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
@@ -289,25 +288,25 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='INTELYA HAVEN <noreply@intelya-haven.com>')
 
-# ===================================
+
 # INTERNATIONALISATION
-# ===================================
+
 LANGUAGE_CODE = 'fr-cm'
 TIME_ZONE = 'Africa/Douala'
 USE_I18N = True
 USE_TZ = True
 LANGUAGES = [('fr', 'Français'), ('en', 'English')]
 
-# ===================================
+
 # SÉCURITÉ UPLOAD
-# ===================================
+
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024    # 10 MB pour les données
 FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024   # 200 MB pour les vidéos
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 
-# ===================================
+
 # PARAMÈTRES PLATEFORME
-# ===================================
+
 
 # ===== MODE GRATUIT (Phase de lancement) =====
 # Mettre FREE_MODE=True dans .env pour désactiver toutes les commissions
@@ -348,9 +347,8 @@ CAMPAY_API_URL       = config('CAMPAY_API_URL', default='https://demo.campay.net
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ===================================
 # LOGGING STRUCTURÉ
-# ===================================
+
 import logging.handlers
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
@@ -385,7 +383,7 @@ LOGGING = {
     },
 }
 
-# ===== CELERY BEAT SCHEDULE =====
+# CELERY BEAT SCHEDULE 
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
@@ -432,9 +430,9 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 
-# ===================================
+
 # DJANGO-AXES — Protection brute force
-# ===================================
+
 INSTALLED_APPS += [
     'axes',
     'cachalot',
@@ -476,22 +474,20 @@ AXES_ENABLE_ADMIN = True
 AXES_IP_BLACKLIST = []  # IPs toujours bloquées
 AXES_NEVER_LOCKOUT_ALLOWLIST = ['127.0.0.1']  # IPs jamais bloquées
 
-# ===================================
+
 # CONTENT SECURITY POLICY
-# ===================================
 CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC  = ("'self'", "'unsafe-inline'", "https://apis.google.com")
 CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
 CSP_IMG_SRC     = ("'self'", "data:", "https:", "blob:")
 CSP_FONT_SRC    = ("'self'", "https://fonts.gstatic.com")
-CSP_CONNECT_SRC = ("'self'", "https://api.campay.net", "https://demo.campay.net")
+CSP_CONNECT_SRC = ("'self'", "https://pay.esicia.com", "https://www.kpay.africa")
 CSP_FRAME_SRC   = ("'none'",)
 CSP_OBJECT_SRC  = ("'none'",)
 CSP_BASE_URI    = ("'self'",)
 
-# ===================================
+
 # DJANGO-CACHALOT — Cache auto requêtes
-# ===================================
 CACHALOT_ENABLED = True
 CACHALOT_CACHE   = 'default'
 CACHALOT_TIMEOUT = 300  # 5 minutes
@@ -501,28 +497,24 @@ CACHALOT_UNCACHABLE_TABLES = [
     'axes_accesslog',
 ]
 
-# ===================================
 # CELERY REDBEAT — Scheduler distribué
-# ===================================
 CELERY_BEAT_SCHEDULER = 'redbeat.RedBeatScheduler'
 REDBEAT_REDIS_URL     = config('REDIS_URL', default='redis://localhost:6379/0')
 
-# ===================================
+
 # DJANGO-SIMPLE-HISTORY — Audit trail
-# ===================================
 SIMPLE_HISTORY_HISTORY_CHANGE_REASON_USE_TEXT_FIELD = True
 
-# ===================================
+
 # DJANGO-DBBACKUP — Sauvegardes DB
-# ===================================
+
 DBBACKUP_STORAGE = 'django.core.files.storage.FileSystemStorage'
 DBBACKUP_STORAGE_OPTIONS = {'location': str(BASE_DIR / 'backups')}
 import os
 os.makedirs(BASE_DIR / 'backups', exist_ok=True)
 
-# ===================================
+
 # HEALTH CHECKS
-# ===================================
 INSTALLED_APPS += [
     'health_check',
     'health_check.db',

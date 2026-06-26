@@ -227,3 +227,22 @@ class TestProfil:
             'email': client_user.email,
         })
         assert r.status_code == status.HTTP_200_OK
+
+
+# ── Tests supplémentaires fusionnés depuis test_auth.py ──────────────────────
+class TestChangementMotDePasse:
+    def test_change_password_success(self, auth_client, client_user):
+        r = auth_client.post('/api/v1/auth/change-password/', {
+            'old_password': 'MotDePasse123!',
+            'new_password': 'NouveauMDP456!',
+            'confirm_password': 'NouveauMDP456!',
+        })
+        assert r.status_code in [200, 204]
+
+    def test_change_password_wrong_old_fails(self, auth_client):
+        r = auth_client.post('/api/v1/auth/change-password/', {
+            'old_password': 'MauvaisAncien!',
+            'new_password': 'NouveauMDP456!',
+            'confirm_password': 'NouveauMDP456!',
+        })
+        assert r.status_code in [400, 401]

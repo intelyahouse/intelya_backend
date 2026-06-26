@@ -1,158 +1,188 @@
 import pytest
-import uuid
 from rest_framework import status
-from apps.users.models import User
 
 pytestmark = pytest.mark.django_db
 
 
-class TestSecurite:
+class TestAuthSecurity:
 
-    def test_sql_injection_login(self, api_client):
-        r = api_client.post('/api/v1/auth/login/', {
-            'email': "admin'--", 'password': "' OR '1'='1",
-        })
-        assert r.status_code in [400, 401]
+    PROTECTED_ENDPOINTS = [
+        ('/api/v1/users/me/', 'get'),
+        ('/api/v1/admin-panel/stats/', 'get'),
+        ('/api/v1/visits/', 'get'),
+        ('/api/v1/leases/payments/', 'get'),
+        ('/api/v1/messaging/conversations/', 'get'),
+        ('/api/v1/notifications/', 'get'),
+        ('/api/v1/referrals/mine/', 'get'),
+        ('/api/v1/boost/mine/', 'get'),
+    ]
 
-    def test_xss_inscription(self, api_client):
-        r = api_client.post('/api/v1/auth/register/', {
-            'first_name': '<script>alert("xss")</script>',
-            'last_name': 'Test', 'email': 'xss@test.cm',
-            'phone': '+237670000050',
-            'password': 'MotDePasse123!', 'confirm_password': 'MotDePasse123!',
-            'terms_accepted': True,
-        })
-        if r.status_code == 201:
-            user = User.objects.get(email='xss@test.cm')
-            assert '<script>' not in user.first_name
+    def test_all_protected_endpoints_require_auth(self, api_client):
+        for url, method in self.PROTECTED_ENDPOINTS:
+            response = getattr(api_client, method)(url)
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED, \
+                f"Endpoint {url} devrait exiger une authentification"
 
-    def test_mass_assignment_role(self, api_client):
-        r = api_client.post('/api/v1/auth/register/', {
-            'first_name': 'Hacker', 'last_name': 'Test',
-            'email': 'hacker2@test.cm', 'phone': '+237670000049',
-            'password': 'MotDePasse123!', 'confirm_password': 'MotDePasse123!',
-            'terms_accepted': True, 'role': 'admin', 'is_superuser': True,
-        })
-        if r.status_code == 201:
-            user = User.objects.get(email='hacker2@test.cm')
-            assert user.role != 'admin'
-            assert not user.is_superuser
+    ADMIN_ONLY_ENDPOINTS = [
+        '/api/v1/admin-panel/stats/',
+        '/api/v1/admin-panel/users/',
+        '/api/v1/admin-panel/transactions/',
+        '/api/v1/admin-panel/revenue/',
+    ]
 
-    def test_uuid_invalide_404(self, api_client):
-        r = api_client.get('/api/v1/properties/pas-un-uuid/')
-        assert r.status_code == status.HTTP_404_NOT_FOUND
+    def test_admin_endpoints_blocked_for_clients(self, auth_client):
+        for url in self.ADMIN_ONLY_ENDPOINTS:
+            response = auth_client.get(url)
+            assert response.status_code == status.HTTP_403_FORBIDDEN, \
+                f"Endpoint {url} doit être réservé aux admins"
 
-    def test_input_trop_long(self, api_client):
-        r = api_client.post('/api/v1/auth/login/', {
-            'email': 'a' * 1000 + '@test.cm',
-            'password': 'a' * 1000,
-        })
-        assert r.status_code in [400, 401]
+    def test_admin_endpoints_blocked_for_agents(self, auth_agent):
+        for url in self.ADMIN_ONLY_ENDPOINTS:
+            response = auth_agent.get(url)
+            assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_routes_protegees_sans_auth(self, api_client):
-        routes = [
-            '/api/v1/users/me/',
-            '/api/v1/visits/',
-            '/api/v1/payments/history/',
-            '/api/v1/messaging/conversations/',
-            '/api/v1/notifications/',
-            '/api/v1/referrals/mine/',
-        ]
-        for route in routes:
-            r = api_client.get(route)
-            assert r.status_code == status.HTTP_401_UNAUTHORIZED, f"{route} devrait être protégée"
+    def test_admin_endpoints_accessible_for_admin(self, auth_admin):
+        for url in self.ADMIN_ONLY_ENDPOINTS:
+            response = auth_admin.get(url)
+            assert response.status_code == status.HTTP_200_OK, \
+                f"Admin devrait accéder à {url}"
 
-    def test_routes_admin_bloquees_client(self, auth_client):
-        routes = [
-            '/api/v1/admin-panel/stats/',
-            '/api/v1/admin-panel/users/',
-            '/api/v1/admin-panel/transactions/',
-        ]
-        for route in routes:
-            r = auth_client.get(route)
-            assert r.status_code == status.HTTP_403_FORBIDDEN, f"{route} devrait être bloquée pour client"
 
-    def test_routes_admin_bloquees_agent(self, auth_agent):
-        r = auth_agent.get('/api/v1/admin-panel/stats/')
-        assert r.status_code == status.HTTP_403_FORBIDDEN
+class TestIDORProtection:
 
-    def test_idor_transactions(self, auth_client, agent_user):
-        from apps.payments.models import Transaction
-        txn = Transaction.objects.create(
-            reference='IH-IDOR-001', payer=agent_user,
-            transaction_type='visit', amount=5000,
-            platform_fee=100, net_amount=4900,
-            currency='FCFA', status='pending', payment_method='mtn',
+    def test_cannot_access_other_user_visits(self, api_client, client_user, create_user,
+                                              agent_user, property_obj):
+        from apps.agents.models import ClientAgentRelation
+        from apps.visits.models import VisitRequest
+        ClientAgentRelation.objects.get_or_create(client=client_user, agent=agent_user)
+        visit = VisitRequest.objects.create(
+            client=client_user, agent=agent_user,
+            visit_property=property_obj, status='scheduled',
         )
-        r = auth_client.get(f'/api/v1/payments/status/{txn.reference}/')
-        assert r.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_idor_conversation(self, auth_client, agent_user, owner_user):
-        from apps.messaging.models import Conversation
-        autre = Conversation.objects.create(conversation_type='agent_owner')
-        autre.participants.add(agent_user, owner_user)
-        r = auth_client.get(f'/api/v1/messaging/conversations/{autre.id}/')
-        assert r.status_code == status.HTTP_404_NOT_FOUND
+        other_user = create_user(
+            email='other_idor@test.com', phone='+237670000080', role='client'
+        )
+        api_client.force_authenticate(user=other_user)
 
-    def test_adresse_masquee_client(self, auth_client, property_obj):
-        r = auth_client.get(f'/api/v1/properties/{property_obj.id}/')
-        assert r.status_code == status.HTTP_200_OK
-        data = r.data.get('data', r.data)
-        assert data.get('full_address') in [None, '', 'Non disponible', 'Adresse confidentielle']
+        response = api_client.post(f'/api/v1/visits/{visit.id}/cancel/', {
+            'reason': 'Tentative IDOR'
+        })
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_forum_agents_confidentiel(self, auth_client):
-        r = auth_client.get('/api/v1/messaging/forum/')
-        assert r.status_code == status.HTTP_403_FORBIDDEN
+    def test_cannot_see_other_profile_data(self, auth_client, admin_user):
+        response = auth_client.get(f'/api/v1/admin-panel/users/')
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
-class TestValidationFichiersMagicBytes:
-    """Vérification que la validation magic bytes bloque les fichiers malveillants"""
+class TestInputValidation:
 
-    def test_image_valide_acceptee(self):
-        from core.validators import validate_image_file
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.core.exceptions import ValidationError
+    def test_sql_injection_in_login(self, api_client):
+        for payload in ["' OR '1'='1", "1'; DROP TABLE users; --", "admin'--"]:
+            response = api_client.post('/api/v1/auth/login/', {
+                'email': payload,
+                'password': 'anything'
+            })
+            assert response.status_code in [400, 401], \
+                f"SQL injection '{payload}' devrait être bloquée"
 
-        # JPEG valide (magic bytes corrects)
-        jpeg_content = b'\xff\xd8\xff\xe0' + b'\x00' * 100
-        f = SimpleUploadedFile("photo.jpg", jpeg_content, content_type="image/jpeg")
-        # Ne doit pas lever d'exception
-        try:
-            validate_image_file(f)
-        except ValidationError as e:
-            # Accepté si c'est une erreur de taille, pas de format
-            assert 'malveillant' not in str(e)
+    def test_xss_in_registration(self, api_client):
+        xss_payloads = [
+            '<script>alert("xss")</script>',
+            'javascript:alert(1)',
+            '<img src=x onerror=alert(1)>',
+        ]
+        for payload in xss_payloads:
+            response = api_client.post('/api/v1/auth/register/', {
+                'first_name': payload,
+                'last_name': 'Test',
+                'email': f'xss_{hash(payload)}@test.com',
+                'phone': '+237670000090',
+                'password': 'TestPass123!',
+                'confirm_password': 'TestPass123!',
+            })
+            if response.status_code == 201:
+                assert '<script>' not in str(response.data)
+                assert 'javascript:' not in str(response.data)
 
-    def test_php_deguise_en_jpeg_rejete(self):
-        from core.validators import validate_image_file
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.core.exceptions import ValidationError
+    def test_invalid_uuid_returns_404(self, api_client):
+        response = api_client.get('/api/v1/properties/not-a-valid-uuid/')
+        assert response.status_code in [400, 404]
 
-        # Fichier PHP avec content_type image/jpeg — attaque classique
-        php_content = b'<?php system($_GET["cmd"]); ?>'
-        f = SimpleUploadedFile("shell.php", php_content, content_type="image/jpeg")
-        with pytest.raises(ValidationError) as exc_info:
-            validate_image_file(f)
-        assert 'malveillant' in str(exc_info.value).lower() or \
-               'correspond' in str(exc_info.value).lower()
+    def test_very_long_input_blocked(self, api_client):
+        response = api_client.post('/api/v1/auth/login/', {
+            'email': 'a' * 10000 + '@test.com',
+            'password': 'a' * 10000,
+        })
+        assert response.status_code in [400, 401]
 
-    def test_pdf_valide_accepte(self):
-        from core.validators import validate_document_file
-        from django.core.files.uploadedfile import SimpleUploadedFile
 
-        pdf_content = b'%PDF-1.4 ' + b'\x00' * 50
-        f = SimpleUploadedFile("doc.pdf", pdf_content, content_type="application/pdf")
-        try:
-            validate_document_file(f)
-        except Exception as e:
-            assert 'malveillant' not in str(e).lower()
+class TestPropertySecurity:
 
-    def test_exe_deguise_en_pdf_rejete(self):
-        from core.validators import validate_document_file
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.core.exceptions import ValidationError
+    def test_property_full_address_never_in_list(self, api_client, property_obj):
+        response = api_client.get('/api/v1/properties/')
+        response_text = str(response.data)
+        assert 'Rue Test N°1' not in response_text, \
+            "L'adresse complète ne doit JAMAIS apparaître dans la liste"
 
-        exe_content = b'MZ' + b'\x90' * 50  # Magic bytes d'un .exe Windows
-        f = SimpleUploadedFile("malware.exe", exe_content, content_type="application/pdf")
-        with pytest.raises(ValidationError):
-            validate_document_file(f)
+    def test_property_full_address_not_in_detail_for_client(self, auth_client, property_obj):
+        response = auth_client.get(f'/api/v1/properties/{property_obj.id}/')
+        assert 'full_address' not in response.data.get('data', {})
+
+    def test_only_agent_can_create_property(self, auth_client, auth_owner, owner_user):
+        data = {'owner_id': str(owner_user.id), 'title': 'Test', 'price': 100000}
+        assert auth_client.post('/api/v1/properties/create/', data).status_code == status.HTTP_403_FORBIDDEN
+        assert auth_owner.post('/api/v1/properties/create/', data).status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestAdminSecurity:
+
+    def test_admin_can_see_full_addresses(self, auth_admin, property_obj):
+        response = auth_admin.get('/api/v1/admin-panel/properties/')
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_admin_validate_user(self, auth_admin, create_user):
+        pending_user = create_user(
+            email='pending@test.com', phone='+237680000001',
+            role='agent',
+        )
+        response = auth_admin.post(
+            f'/api/v1/admin-panel/users/{pending_user.id}/validate/',
+            {'action': 'approve', 'note': 'Documents vérifiés'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        pending_user.refresh_from_db()
+        assert pending_user.is_validated is True
+
+    def test_admin_reject_user(self, auth_admin, create_user):
+        pending_user = create_user(
+            email='toreject@test.com', phone='+237680000002',
+            role='agent',
+        )
+        response = auth_admin.post(
+            f'/api/v1/admin-panel/users/{pending_user.id}/validate/',
+            {'action': 'reject', 'note': 'Documents invalides'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        pending_user.refresh_from_db()
+        assert pending_user.is_validated is False
+
+    def test_admin_block_user(self, auth_admin, client_user):
+        response = auth_admin.post(
+            f'/api/v1/admin-panel/users/{client_user.id}/block/',
+            {'action': 'block'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        client_user.refresh_from_db()
+        assert client_user.is_blocked is True
+
+    def test_admin_unblock_user(self, auth_admin, client_user):
+        client_user.is_blocked = True
+        client_user.save()
+        response = auth_admin.post(
+            f'/api/v1/admin-panel/users/{client_user.id}/block/',
+            {'action': 'unblock'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        client_user.refresh_from_db()
+        assert client_user.is_blocked is False

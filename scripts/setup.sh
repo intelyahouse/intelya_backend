@@ -15,16 +15,16 @@ source venv/bin/activate
 pip install --upgrade pip
 
 # 4. Installer les dépendances
-echo "📥 Installation des packages..."
+echo " Installation des packages..."
 pip install -r requirements.txt
 
 # 5. Copier le .env
 if [ ! -f .env ]; then
     cp .env.example .env
-    echo "⚠️  Fichier .env créé. REMPLIS les valeurs avant de continuer!"
+    echo "  Fichier .env créé. REMPLIS les valeurs avant de continuer!"
 fi
 
-echo "✅ Installation terminée!"
+echo " Installation terminée!"
 echo ""
 echo "Prochaines étapes:"
 echo "1. Remplis le fichier .env avec tes vraies valeurs"

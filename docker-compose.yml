@@ -55,7 +55,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:
@@ -76,7 +76,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:
@@ -97,7 +97,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:
