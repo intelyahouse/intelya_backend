@@ -136,6 +136,7 @@ class TestPlaintes:
         plainte = Complaint.objects.create(
             lease=bail_actif,
             tenant=client_with_agent,
+            assigned_to=agent_user,
             category='maintenance',
             title='Test plainte',
             description='Description de la plainte test resolution',

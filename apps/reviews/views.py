@@ -87,7 +87,7 @@ class LeaveReviewView(APIView):
         review = serializer.save(
             reviewer=request.user,
             agent=visit.agent,
-            rental_property=visit.rental_property,
+            rental_property=visit.visit_property,
             gps_verified=True,
             visit_id=visit_id
         )
