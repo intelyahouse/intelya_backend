@@ -4,6 +4,7 @@ Niveau : Tests de configuration et infrastructure
 """
 import pytest
 import django.conf
+from rest_framework import status
 
 pytestmark = pytest.mark.django_db
 
