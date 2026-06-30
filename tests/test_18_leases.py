@@ -110,7 +110,7 @@ class TestPaiementsLoyer:
 
 class TestPlaintes:
 
-    def test_soumettre_plainte(self, auth_client_with_agent):
+    def test_soumettre_plainte(self, auth_client_with_agent, bail_actif, owner_user):
         r = auth_client_with_agent.post('/api/v1/leases/complaints/submit/', {
             'category': 'maintenance',
             'title': 'Fuite eau salle de bain',

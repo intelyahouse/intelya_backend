@@ -311,6 +311,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 # ===== MODE GRATUIT (Phase de lancement) =====
 # Mettre FREE_MODE=True dans .env pour désactiver toutes les commissions
 FREE_MODE                    = config('FREE_MODE', default=True, cast=bool)
+SENTRY_DSN = config('SENTRY_DSN', default='')
 PLATFORM_COMMISSION_PERCENT  = 0 if FREE_MODE else config('PLATFORM_COMMISSION_PERCENT', default=2, cast=float)
 BOOST_ENABLED                = not FREE_MODE
 VISIT_FEE_ENABLED            = not FREE_MODE

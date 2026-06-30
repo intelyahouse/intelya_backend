@@ -41,12 +41,12 @@ class TestFluxCompletClientVisite:
         r2 = api_client.get(f'/api/v1/properties/{property_obj.id}/')
         assert r2.status_code == status.HTTP_200_OK
 
-    def test_flux_visite_confirmation_done(self, auth_client, auth_agent,
-                                            property_obj, agent_user, client_user):
+    def test_flux_visite_confirmation_done(self, auth_client_with_agent, auth_agent,
+                                            property_obj, agent_user, client_with_agent):
         """Flux complet : demande → confirmation → done → frais libérés"""
         from apps.agents.models import ClientAgentRelation
         ClientAgentRelation.objects.get_or_create(
-            client=client_user, agent=agent_user
+            client=client_with_agent, agent=agent_user
         )
 
         # 1. Demander une visite
@@ -68,11 +68,11 @@ class TestFluxCompletClientVisite:
                 assert 'full_address' not in item, \
                     "L'adresse complète ne doit pas apparaître dans la liste"
 
-    def test_flux_messagerie_apres_visite(self, auth_client, auth_agent,
-                                           client_user, agent_user):
+    def test_flux_messagerie_apres_visite(self, auth_client_with_agent, auth_agent,
+                                           client_with_agent, agent_user):
         """Après une interaction, les deux parties peuvent se contacter"""
-        r = auth_client.post('/api/v1/messaging/conversations/start/', {
-            'participant_id': str(agent_user.id),
+        r = auth_client_with_agent.post('/api/v1/messaging/conversations/start/', {
+            'user_id': str(agent_user.id),
             'message': 'Bonjour, j\'ai visité votre bien.',
         })
         assert r.status_code in [201, 400]

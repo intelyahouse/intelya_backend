@@ -49,7 +49,7 @@ class TestBaux:
         r = auth_owner.get('/api/v1/contracts/leases/')
         assert r.status_code == status.HTTP_200_OK
 
-    def test_signer_bail_agent(self, auth_agent, agent_user, owner_user, client_with_agent, property_obj):
+    def test_signer_bail_agent(self, auth_client_with_agent, agent_user, owner_user, client_with_agent, property_obj):
         bail = LeaseContract.objects.create(
             tenant=client_with_agent,
             owner=owner_user,
@@ -62,7 +62,7 @@ class TestBaux:
             payment_day=5,
             status='draft',
         )
-        r = auth_agent.post(f'/api/v1/contracts/leases/{bail.id}/sign/')
+        r = auth_client_with_agent.post(f'/api/v1/contracts/leases/{bail.id}/sign/')
         assert r.status_code in [200, 201]
 
     def test_signer_bail_owner(self, auth_owner, agent_user, owner_user, client_with_agent, property_obj):

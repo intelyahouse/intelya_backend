@@ -70,7 +70,7 @@ class TestGestionLocative:
         r = auth_client.get('/api/v1/leases/complaints/')
         assert r.status_code == status.HTTP_200_OK
 
-    def test_soumettre_plainte(self, auth_client, property_obj):
+    def test_soumettre_plainte(self, auth_client_with_agent, bail_actif, client_with_agent):
         r = auth_client.post('/api/v1/leases/complaints/create/', {
             'property': str(property_obj.id),
             'complaint_type': 'maintenance',
@@ -79,8 +79,8 @@ class TestGestionLocative:
         })
         assert r.status_code in [200, 201]
 
-    def test_non_authentifie_bloque_plainte(self, api_client, property_obj):
-        r = api_client.post('/api/v1/leases/complaints/create/', {
+    def test_non_authentifie_bloque_plainte(self, api_client):
+        r = api_client.post('/api/v1/leases/complaints/submit/', {
             'property': str(property_obj.id),
             'title': 'Test',
         })
