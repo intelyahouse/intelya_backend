@@ -30,7 +30,8 @@ class TestContrats:
 
     def test_agent_cree_bail(self, auth_agent, agent_user, owner_user, client_with_agent, property_obj):
         r = auth_agent.post('/api/v1/contracts/leases/create/', {
-            'property': str(property_obj.id),
+            'rental_property': str(property_obj.id),
+            'owner': str(owner_user.id),
             'tenant': str(client_with_agent.id),
             'start_date': date.today().isoformat(),
             'end_date': (date.today() + timedelta(days=365)).isoformat(),
@@ -38,6 +39,7 @@ class TestContrats:
             'deposit_amount': 300000,
             'payment_day': 5,
         })
+        print(f"DEBUG bail: {r.data}")
         assert r.status_code in [200, 201]
 
     def test_client_ne_peut_pas_creer_bail(self, auth_client, property_obj):
@@ -70,10 +72,20 @@ class TestGestionLocative:
         r = auth_client.get('/api/v1/leases/complaints/')
         assert r.status_code == status.HTTP_200_OK
 
-    def test_soumettre_plainte(self, auth_client_with_agent, bail_actif, client_with_agent):
-        r = auth_client.post('/api/v1/leases/complaints/create/', {
-            'property': str(property_obj.id),
-            'complaint_type': 'maintenance',
+    def test_soumettre_plainte(self, auth_client_with_agent, client_with_agent, owner_user, agent_user, property_obj):
+        from apps.contracts.models import LeaseContract
+        import datetime
+        LeaseContract.objects.create(
+            tenant=client_with_agent, owner=owner_user, agent=agent_user,
+            rental_property=property_obj, monthly_rent=150000,
+            deposit_amount=300000, payment_day=5,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today() + datetime.timedelta(days=365),
+            status="active", signed_by_tenant=True, signed_by_owner=True,
+        )
+        r = auth_client_with_agent.post('/api/v1/leases/complaints/submit/', {
+            
+            'category': 'maintenance',
             'title': 'Fuite eau salle de bain',
             'description': 'Il y a une fuite dans la salle de bain depuis 3 jours',
         })
@@ -81,7 +93,6 @@ class TestGestionLocative:
 
     def test_non_authentifie_bloque_plainte(self, api_client):
         r = api_client.post('/api/v1/leases/complaints/submit/', {
-            'property': str(property_obj.id),
             'title': 'Test',
         })
         assert r.status_code == status.HTTP_401_UNAUTHORIZED

@@ -233,7 +233,7 @@ class TestProfil:
 class TestChangementMotDePasse:
     def test_change_password_success(self, auth_client, client_user):
         r = auth_client.post('/api/v1/auth/change-password/', {
-            'old_password': 'MotDePasse123!',
+            'old_password': 'TestPass123!',
             'new_password': 'NouveauMDP456!',
             'confirm_password': 'NouveauMDP456!',
         })

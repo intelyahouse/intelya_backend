@@ -90,7 +90,7 @@ class TestCreationBien:
         r = auth_agent.post('/api/v1/properties/create/', {
             'owner_id': str(owner_user.id),
             'title': 'Bel Appartement Test Bonanjo',
-            'description': 'Belle description tres detaillee et suffisamment longue pour passer la validation stricte des cinquante mots minimum requis par la plateforme INTELYA HAVEN afin de garantir la qualite et la completude des annonces immobilieres publiees sur cette plateforme immobiliere africaine innovante et moderne',
+            'description': 'Belle description tres detaillee et suffisamment longue pour valider les cinquante mots minimum requis par la plateforme INTELYA HAVEN afin de garantir la qualite et la completude des annonces immobilieres publiees sur cette excellente plateforme immobiliere africaine innovante et moderne qui aide les proprietaires et locataires',
             'property_type': 'apartment',
             'price': 150000,
             'payment_period': 'monthly',
