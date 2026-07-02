@@ -4,6 +4,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
 from .models import OTPVerification, Blacklist
+from core.validators import validate_phone_cameroon
 import random
 import string
 
@@ -27,6 +28,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value.lower()
 
     def validate_phone(self, value):
+        try:
+            validate_phone_cameroon(value)
+        except Exception as e:
+            from rest_framework import serializers as ser
+            raise ser.ValidationError(str(e))
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("Ce téléphone est déjà utilisé.")
         if Blacklist.objects.filter(phone=value).exists():
@@ -41,6 +47,18 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not data.get('last_name'):
             raise serializers.ValidationError("Le nom est obligatoire.")
         return data
+
+    def validate_first_name(self, value):
+        if '<' in value or '>' in value or 'script' in value.lower():
+            from rest_framework import serializers
+            raise serializers.ValidationError("Caractères non autorisés.")
+        return value.strip()
+
+    def validate_last_name(self, value):
+        if '<' in value or '>' in value or 'script' in value.lower():
+            from rest_framework import serializers
+            raise serializers.ValidationError("Caractères non autorisés.")
+        return value.strip()
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')

@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Settings Development
-# ===================================
 
 from .base import *
 
@@ -39,3 +38,12 @@ LOGGING = {
         },
     },
 }
+
+# Désactiver throttling en tests
+import sys
+if 'pytest' in sys.modules or 'test' in sys.argv:
+    REST_FRAMEWORK = {
+        **REST_FRAMEWORK,
+        'DEFAULT_THROTTLE_CLASSES': [],
+        'DEFAULT_THROTTLE_RATES': {},
+    }

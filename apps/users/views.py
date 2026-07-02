@@ -6,9 +6,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import authenticate, get_user_model
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from datetime import timedelta
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample
+from django_ratelimit.decorators import ratelimit
 from .serializers import (
     RegisterSerializer, LoginSerializer, OTPVerifySerializer,
     OTPResendSerializer, UserProfileSerializer,
@@ -21,6 +23,7 @@ from core.utils import generate_otp, success_response, error_response
 User = get_user_model()
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -59,6 +62,7 @@ class RegisterView(APIView):
         print(f"[SMS] Code OTP pour {user.phone}: {code}")
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -109,6 +113,12 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+        if not user.is_phone_verified:
+            return Response(
+                error_response("Téléphone non vérifié. Entrez votre code OTP."),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         if user.is_blocked:
             return Response(
                 error_response("Votre compte est bloqué. Réglez vos impayés."),
@@ -116,7 +126,8 @@ class LoginView(APIView):
             )
 
         user.login_attempts = 0
-        user.save(update_fields=['login_attempts'])
+        user.last_login_attempt = None
+        user.save(update_fields=['login_attempts', 'last_login_attempt'])
 
         refresh = RefreshToken.for_user(user)
         return Response(success_response({
@@ -144,6 +155,7 @@ class LogoutView(APIView):
             )
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -184,6 +196,7 @@ class VerifyOTPView(APIView):
         return Response(success_response(message="Téléphone vérifié avec succès ✅"))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ResendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -303,6 +316,7 @@ class RequestRoleView(APIView):
         ))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
@@ -344,6 +358,7 @@ class ForgotPasswordView(APIView):
         ))
 
 
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
 
@@ -384,3 +399,64 @@ class ResetPasswordView(APIView):
         return Response(success_response(
             message="Mot de passe réinitialisé avec succès."
         ))
+
+
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Auth'],
+        summary="Connexion avec Google",
+        description="Connexion avec un token Google. Si premiere connexion, demande le telephone."
+    )
+    def post(self, request):
+        from .google_auth import verify_google_token, get_or_create_google_user
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        token = request.data.get('token')
+        if not token:
+            return Response(
+                error_response("Token Google manquant"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        google_data = verify_google_token(token)
+        if not google_data.get('success'):
+            return Response(
+                error_response("Token Google invalide"),
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        user, created, needs_phone = get_or_create_google_user(google_data)
+        if not user:
+            return Response(
+                error_response("Impossible de créer le compte"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if needs_phone:
+            return Response(
+                success_response(
+                    {
+                        'needs_phone': True,
+                        'email': user.email,
+                        'user_id': str(user.id),
+                    },
+                    "Veuillez vérifier votre numéro de téléphone pour continuer."
+                ),
+                status=status.HTTP_200_OK
+            )
+
+        if user.is_blocked:
+            return Response(
+                error_response("Votre compte est bloqué."),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        refresh = RefreshToken.for_user(user)
+        return Response(success_response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserProfileSerializer(user).data,
+            'needs_phone': False,
+        }, "Connexion Google réussie"))

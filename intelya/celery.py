@@ -1,20 +1,18 @@
-# ===================================
+
 # INTELYA HAVEN - Celery Configuration
-# ===================================
 
 import os
 from celery import Celery
 from celery.schedules import crontab
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'intelya.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'intelya.settings.development')
 
 app = Celery('intelya')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 
-# ===================================
+
 # TÂCHES PÉRIODIQUES (Celery Beat)
-# ===================================
 app.conf.beat_schedule = {
 
     # Rappels loyers — vérifie chaque jour à 8h

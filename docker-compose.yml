@@ -2,9 +2,7 @@ version: '3.9'
 
 services:
 
-  # ===================================
   # BASE DE DONNÉES PostgreSQL + PostGIS
-  # ===================================
   db:
     image: postgis/postgis:15-3.4
     container_name: intelya_db
@@ -23,9 +21,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ===================================
   # CACHE + BROKER - Redis
-  # ===================================
   redis:
     image: redis:7.2-alpine
     container_name: intelya_redis
@@ -40,9 +36,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ===================================
   # BACKEND - Django
-  # ===================================
   backend:
     build:
       context: .
@@ -61,7 +55,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:
@@ -70,9 +64,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ===================================
   # CELERY WORKER - Tâches asynchrones
-  # ===================================
   celery_worker:
     build:
       context: .
@@ -84,7 +76,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:
@@ -93,9 +85,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ===================================
   # CELERY BEAT - Tâches périodiques
-  # ===================================
   celery_beat:
     build:
       context: .
@@ -107,7 +97,7 @@ services:
     env_file:
       - .env
     environment:
-      - DJANGO_SETTINGS_MODULE=intelya.settings
+      - DJANGO_SETTINGS_MODULE=intelya.settings.development
       - DJANGO_ENV=development
     depends_on:
       db:

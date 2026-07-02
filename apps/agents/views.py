@@ -29,7 +29,34 @@ class AgentListView(APIView):
         if city:
             agents = agents.filter(working_city__icontains=city)
 
-        agents = agents.order_by('-reliability_score')
+        from django.utils import timezone
+        from apps.boost.models import Boost
+        from django.db.models import Case, When, IntegerField, Value
+
+        now = timezone.now()
+
+        # Annoter chaque agent avec son niveau de boost actif
+        active_boosts = Boost.objects.filter(
+            is_active=True,
+            end_date__gte=now
+        ).filter(
+            target_city__icontains=city if city else ''
+        )
+
+        gold_agents   = active_boosts.filter(level='gold').values_list('agent_id', flat=True)
+        silver_agents = active_boosts.filter(level='silver').values_list('agent_id', flat=True)
+        bronze_agents = active_boosts.filter(level='bronze').values_list('agent_id', flat=True)
+
+        agents = agents.annotate(
+            boost_priority=Case(
+                When(user_id__in=gold_agents,   then=Value(3)),
+                When(user_id__in=silver_agents, then=Value(2)),
+                When(user_id__in=bronze_agents, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField()
+            )
+        ).order_by('-boost_priority', '-reliability_score')
+
         serializer = PublicAgentSerializer(agents, many=True)
         return Response(success_response(serializer.data))
 
