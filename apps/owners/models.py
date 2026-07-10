@@ -51,3 +51,38 @@ class OwnerProfile(models.Model):
 
     def has_active_agent(self):
         return self.get_active_agent() is not None
+
+class BankAccount(models.Model):
+    """Comptes bancaires d'un propriétaire — plusieurs comptes possibles"""
+    ACCOUNT_TYPES = [
+        ('mtn',    'MTN Mobile Money'),
+        ('orange', 'Orange Money'),
+        ('bank',   'Compte bancaire'),
+    ]
+
+    owner        = models.ForeignKey(
+        OwnerProfile,
+        on_delete=models.CASCADE,
+        related_name='bank_accounts'
+    )
+    account_type    = models.CharField(max_length=10, choices=ACCOUNT_TYPES)
+    account_number  = models.CharField(max_length=100)
+    account_name    = models.CharField(max_length=200, blank=True)
+    bank_name       = models.CharField(max_length=200, blank=True)
+    is_default      = models.BooleanField(default=False)
+    is_active       = models.BooleanField(default=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_default', '-created_at']
+
+    def save(self, *args, **kwargs):
+        # Un seul compte peut être par défaut
+        if self.is_default:
+            BankAccount.objects.filter(
+                owner=self.owner, is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.owner} — {self.account_type} — {self.account_number}"

@@ -13,6 +13,7 @@ from core.utils import success_response, error_response
 from core.pagination import StandardResultsSetPagination
 from core.throttles import SearchThrottle, UploadThrottle
 from django.contrib.auth import get_user_model
+from rest_framework import generics
 
 User = get_user_model()
 
@@ -308,3 +309,25 @@ class AIMatchView(APIView):
             'total': len(result),
             'recommendations': result
         }))
+
+class FeaturedPropertiesView(generics.ListAPIView):
+    """Biens en vedette — les plus récents disponibles"""
+    permission_classes = [AllowAny]
+    serializer_class   = PropertyListSerializer
+    pagination_class   = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return Property.objects.filter(
+            status='available'
+        ).select_related(
+            'agent__user', 'owner__user'
+        ).prefetch_related('photos').order_by('-created_at')[:6]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'results': serializer.data,
+            'count': len(serializer.data),
+        })

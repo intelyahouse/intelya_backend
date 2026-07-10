@@ -6,9 +6,11 @@ from .views import (
     PropertyLikeView, MyFavoritesView,
     AgentPropertiesView, UploadPropertyPhotosView
 )
+from .views import FeaturedPropertiesView
 
 urlpatterns = [
     path('', PropertyListView.as_view(), name='property-list'),
+    path('featured/', FeaturedPropertiesView.as_view(), name='property-featured'),
     path('create/', CreatePropertyView.as_view(), name='property-create'),
     path('favorites/', MyFavoritesView.as_view(), name='favorites'),
     path('agent/', AgentPropertiesView.as_view(), name='agent-properties'),

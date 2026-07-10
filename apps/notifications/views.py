@@ -31,3 +31,23 @@ class MarkReadView(APIView):
             recipient=request.user, is_read=False
         ).update(is_read=True, read_at=timezone.now())
         return Response(success_response(message="Toutes les notifications marquées comme lues ✅"))
+
+class MarkOneReadView(APIView):
+    """Marquer une seule notification comme lue"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, notification_id):
+        try:
+            notif = Notification.objects.get(
+                id=notification_id,
+                user=request.user
+            )
+            notif.is_read = True
+            notif.read_at = timezone.now()
+            notif.save(update_fields=['is_read', 'read_at'])
+            return Response({'success': True, 'message': 'Notification marquée comme lue'})
+        except Notification.DoesNotExist:
+            return Response(
+                {'success': False, 'message': 'Notification introuvable'},
+                status=404
+            )
