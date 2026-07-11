@@ -1,6 +1,5 @@
-# ===================================
+
 # INTELYA HAVEN - Requirements
-# ===================================
 
 # Django Core
 Django==4.2.13
@@ -80,3 +79,46 @@ phonenumbers==8.13.37
 
 # Dates et heures
 pytz==2024.1
+
+# SÉCURITÉ AVANCÉE 
+# Brute force et IP blocking
+django-axes==6.4.0
+
+# Content Security Policy headers
+django-csp==3.8
+
+# XSS sanitization
+bleach==6.1.0
+
+# Chiffrement données sensibles (CNI)
+django-encrypted-model-fields==0.6.5
+
+# PERFORMANCE
+# Cache automatique des requêtes DB
+django-cachalot==2.6.3
+
+# Compression réponses API
+django-compression-middleware==0.5.0
+
+# ===== MONITORING 
+# Health checks complets
+django-health-check==3.18.3
+
+# Profiling requêtes (dev seulement)
+django-silk==5.1.0
+
+ CELERY 
+# Scheduler distribué (évite les doublons en production multi-serveurs)
+celery-redbeat==2.2.0
+
+# TESTS 
+pytest-cov==5.0.0
+pytest-asyncio==0.23.7
+model-bakery==1.18.0
+
+UTILITAIRES 
+# Historique des modifications
+django-simple-history==3.7.0
+
+# Backup base de données
+django-dbbackup==4.1.0

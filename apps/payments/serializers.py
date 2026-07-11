@@ -1,0 +1,32 @@
+from rest_framework import serializers
+from .models import Transaction, Escrow
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    payer_name    = serializers.CharField(source='payer.get_full_name', read_only=True)
+    receiver_name = serializers.CharField(source='receiver.get_full_name', read_only=True)
+
+    class Meta:
+        model  = Transaction
+        fields = [
+            'id', 'reference', 'payer_name', 'receiver_name',
+            'transaction_type', 'amount', 'platform_fee',
+            'net_amount', 'currency', 'status', 'payment_method',
+            'description', 'completed_at', 'created_at'
+        ]
+
+
+class InitiatePaymentSerializer(serializers.Serializer):
+    METHOD_CHOICES = [('mtn', 'MTN Mobile Money'), ('orange', 'Orange Money'), ('bank', 'Compte bancaire')]
+    amount         = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = serializers.ChoiceField(choices=METHOD_CHOICES)
+    phone_number   = serializers.CharField(required=False)
+    related_type   = serializers.ChoiceField(choices=[('visit', 'Visite'), ('rent', 'Loyer'), ('commission', 'Commission')])
+    related_id     = serializers.UUIDField()
+
+
+class WebhookPayloadSerializer(serializers.Serializer):
+    reference  = serializers.CharField()
+    status     = serializers.CharField()
+    amount     = serializers.CharField(required=False)
+    operator   = serializers.CharField(required=False)

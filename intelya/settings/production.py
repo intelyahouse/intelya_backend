@@ -1,12 +1,14 @@
-# ===================================
+
 # INTELYA HAVEN - Settings Production
-# ===================================
 
 from .base import *
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
 DEBUG = False
+
+# Hosts autorisés en production — JAMAIS '*'
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='intelya-haven.com').split(',')
 
 # Sécurité production
 SECURE_BROWSER_XSS_FILTER = True
