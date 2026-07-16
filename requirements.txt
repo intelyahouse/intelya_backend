@@ -1,0 +1,127 @@
+
+# INTELYA HAVEN - Requirements
+
+# Django Core
+Django==4.2.13
+djangorestframework==3.15.1
+djangorestframework-simplejwt==5.3.1
+
+# Authentication
+django-allauth==0.63.3
+dj-rest-auth==6.0.0
+django-cors-headers==4.3.1
+
+# Database PostgreSQL + PostGIS
+psycopg2-binary==2.9.9
+
+django-environ==0.11.2
+
+# Filtrage et recherche
+django-filter==24.2
+
+# API Documentation Swagger
+drf-spectacular==0.27.2
+
+# Cache et tâches asynchrones
+celery==5.4.0
+redis==5.0.4
+django-redis==5.4.0
+
+# WebSocket temps réel (Chat)
+channels==4.1.0
+channels-redis==4.2.0
+daphne==4.1.2
+
+# Stockage fichiers AWS S3
+boto3==1.34.114
+django-storages==1.14.3
+
+# Traitement images
+Pillow==10.3.0
+
+# Génération PDF (Contrats, Reçus)
+reportlab==4.2.0
+
+# SMS
+twilio==9.0.5
+
+# Notifications Push Mobile (Firebase)
+firebase-admin==6.5.0
+
+# Sécurité - Rate Limiting
+django-ratelimit==4.1.0
+
+# Monitoring erreurs
+sentry-sdk==2.3.1
+
+# Serveur production
+gunicorn==22.0.0
+whitenoise==6.7.0
+
+# Géolocalisation PostGIS
+django-geojson==4.1.0
+
+# Variables d'environnement
+python-decouple==3.8
+
+# Utilitaires
+Faker==25.2.0
+factory-boy==3.3.0
+python-slugify==8.0.4
+django-extensions==3.2.3
+
+# Tests
+pytest==8.2.1
+pytest-django==4.8.0
+coverage==7.5.1
+
+# Validation
+phonenumbers==8.13.37
+
+# Dates et heures
+pytz==2024.1
+
+# SÉCURITÉ AVANCÉE 
+# Brute force et IP blocking
+django-axes==6.4.0
+
+# Content Security Policy headers
+django-csp==3.8
+
+# XSS sanitization
+bleach==6.1.0
+
+# Chiffrement données sensibles (CNI)
+django-encrypted-model-fields==0.6.5
+
+# PERFORMANCE
+# Cache automatique des requêtes DB
+django-cachalot==2.6.3
+
+# Compression réponses API
+django-compression-middleware==0.5.0
+
+# ===== MONITORING 
+# Health checks complets
+django-health-check==3.18.3
+
+# Profiling requêtes (dev seulement)
+django-silk==5.1.0
+
+#-----CELERY 
+# Scheduler distribué (évite les doublons en production multi-serveurs)
+celery-redbeat==2.2.0
+
+# TESTS 
+pytest-cov==5.0.0
+pytest-asyncio==0.23.7
+model-bakery==1.18.0
+
+#=======UTILITAIRES 
+# Historique des modifications
+django-simple-history==3.7.0
+
+# Backup base de données
+django-dbbackup==4.1.0
+
+djangorestframework-camel-case
