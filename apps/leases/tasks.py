@@ -24,7 +24,7 @@ def check_rent_payments(self):
         for payment in due_soon:
             try:
                 notify_rent_reminder(payment.tenant, payment.amount, payment.due_date)
-                sms_service.send_rent_reminder(payment.tenant.phone, f"{payment.amount} FCFA", str(payment.due_date))
+                sms_service.send_rent_reminder(payment.tenant.phone, f"{payment.amount} FCFA", str(payment.due_date), email=payment.tenant.email)
                 payment.alert_sent_minus5 = True
                 payment.save(update_fields=['alert_sent_minus5'])
             except Exception as e:

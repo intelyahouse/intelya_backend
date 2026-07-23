@@ -23,7 +23,7 @@ from core.utils import generate_otp, success_response, error_response
 User = get_user_model()
 
 
-@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
+@method_decorator(ratelimit(key='ip', rate='10/m', block=True), name='post')
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -59,10 +59,11 @@ class RegisterView(APIView):
             user=user, code=code,
             phone=user.phone, expires_at=expires_at
         )
-        print(f"[SMS] Code OTP pour {user.phone}: {code}")
+        from apps.notifications.services.sms import sms_service
+        sms_service.send_otp(user.phone, code, email=user.email)
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
+@method_decorator(ratelimit(key='ip', rate='15/m', block=True), name='post')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -108,8 +109,13 @@ class LoginView(APIView):
             user_obj.login_attempts += 1
             user_obj.last_login_attempt = timezone.now()
             user_obj.save(update_fields=['login_attempts', 'last_login_attempt'])
+            remaining = settings.MAX_LOGIN_ATTEMPTS - user_obj.login_attempts
+            if remaining > 0:
+                message = f"Email ou mot de passe incorrect. Il vous reste {remaining} tentative(s) avant le blocage du compte."
+            else:
+                message = "Email ou mot de passe incorrect. Compte bloqué après trop de tentatives."
             return Response(
-                error_response("Email ou mot de passe incorrect"),
+                error_response(message),
                 status=status.HTTP_401_UNAUTHORIZED
             )
 

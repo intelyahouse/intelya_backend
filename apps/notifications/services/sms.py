@@ -1,8 +1,10 @@
 """
 Service SMS — via API du professeur
+Peut aussi router vers l'email temporairement (settings.NOTIFICATION_CHANNEL = 'email')
 """
 import requests
 from django.conf import settings
+from django.core.mail import send_mail
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,10 +17,18 @@ class SMSService:
         self.api_url    = settings.SMS_API_URL
         self.sender     = settings.SMS_SENDER_NAME
 
-    def send(self, phone, message):
-        """Envoyer un SMS"""
+    def send(self, phone, message, email=None, subject="INTELYA HAVEN"):
+        """Envoyer une notification — email si NOTIFICATION_CHANNEL='email' et email fourni, sinon SMS"""
+        if getattr(settings, 'NOTIFICATION_CHANNEL', 'sms') == 'email' and email:
+            try:
+                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+                logger.info(f"[EMAIL] Envoyé à {email}")
+                return True
+            except Exception as e:
+                logger.error(f"[EMAIL] Exception: {e}")
+                return False
+
         if not self.api_key or not self.api_url:
-            # Simulation en dev — affiche dans le terminal
             print(f"\n📱 [SMS → {phone}]\n{message}\n")
             logger.info(f"[SMS SIMULATION] → {phone}: {message[:50]}...")
             return True
@@ -44,17 +54,29 @@ class SMSService:
             logger.error(f"[SMS] Exception: {e}")
             return False
 
-    def send_otp(self, phone, code):
-        return self.send(phone, f"INTELYA HAVEN - Votre code de vérification est : {code}. Valable 15 minutes.")
+    def send_otp(self, phone, code, email=None):
+        return self.send(
+            phone, f"INTELYA HAVEN - Votre code de vérification est : {code}. Valable 15 minutes.",
+            email=email, subject="Votre code de vérification INTELYA HAVEN"
+        )
 
-    def send_rent_reminder(self, phone, amount, due_date):
-        return self.send(phone, f"INTELYA HAVEN - Rappel : Votre loyer de {amount} FCFA est dû le {due_date}.")
+    def send_rent_reminder(self, phone, amount, due_date, email=None):
+        return self.send(
+            phone, f"INTELYA HAVEN - Rappel : Votre loyer de {amount} FCFA est dû le {due_date}.",
+            email=email, subject="Rappel de loyer — INTELYA HAVEN"
+        )
 
-    def send_account_validated(self, phone, role):
-        return self.send(phone, f"INTELYA HAVEN - Votre compte {role} a été validé. Bienvenue !")
+    def send_account_validated(self, phone, role, email=None):
+        return self.send(
+            phone, f"INTELYA HAVEN - Votre compte {role} a été validé. Bienvenue !",
+            email=email, subject="Compte validé — INTELYA HAVEN"
+        )
 
-    def send_payment_received(self, phone, amount):
-        return self.send(phone, f"INTELYA HAVEN - Paiement de {amount} FCFA reçu avec succès.")
+    def send_payment_received(self, phone, amount, email=None):
+        return self.send(
+            phone, f"INTELYA HAVEN - Paiement de {amount} FCFA reçu avec succès.",
+            email=email, subject="Paiement reçu — INTELYA HAVEN"
+        )
 
 
 sms_service = SMSService()

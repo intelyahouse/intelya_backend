@@ -3,7 +3,8 @@ from apps.users.views import (
     RegisterView, LoginView, LogoutView,
     VerifyOTPView, ResendOTPView,
     ChangePasswordView, RequestRoleView,
-    ForgotPasswordView, ResetPasswordView
+    ForgotPasswordView, ResetPasswordView,
+    GoogleAuthView
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path('request-role/', RequestRoleView.as_view(), name='request-role'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
+    path('google/', GoogleAuthView.as_view(), name='google-auth'),
 ]

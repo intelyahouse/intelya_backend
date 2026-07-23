@@ -106,7 +106,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'full_name', 'role', 'profile_photo', 'is_validated',
             'is_phone_verified', 'is_blocked', 'validation_status',
-            'referral_code', 'language', 'date_joined'
+            'referral_code', 'language', 'date_joined', 'updated_at'
         ]
         read_only_fields = [
             'id', 'role', 'is_validated', 'is_phone_verified',

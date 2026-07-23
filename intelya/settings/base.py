@@ -335,6 +335,10 @@ SMILE_IDENTITY_API_KEY = config('SMILE_IDENTITY_API_KEY', default='')
 SMS_API_KEY = config('SMS_API_KEY', default='')
 SMS_API_URL = config('SMS_API_URL', default='')
 SMS_SENDER_NAME = config('SMS_SENDER_NAME', default='INTELYA')
+
+# Canal de notification temporaire — 'email' pour l'instant (pas de SMS configuré),
+# repasser à 'sms' plus tard quand SMS_API_KEY/SMS_API_URL seront prêts.
+NOTIFICATION_CHANNEL = config('NOTIFICATION_CHANNEL', default='email')
 ORANGE_MONEY_API_KEY = config('ORANGE_MONEY_API_KEY', default='')
 ORANGE_MONEY_API_URL = config('ORANGE_MONEY_API_URL', default='')
 MTN_MOMO_API_KEY = config('MTN_MOMO_API_KEY', default='')
