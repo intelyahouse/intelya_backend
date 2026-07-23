@@ -97,6 +97,22 @@ class Property(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # ===== PANORAMA 3D =====
+    panorama_url = models.URLField(
+        null=True,
+        blank=True,
+        help_text="URL de l'image 360° (equirectangular ou cubemap)"
+    )
+    panorama_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('equirectangular', 'Equirectangular'),
+            ('cubemap', 'Cubemap'),
+        ],
+        default='equirectangular',
+        help_text="Type de projection panoramique"
+    )
+
     class Meta:
         verbose_name         = 'Bien Immobilier'
         verbose_name_plural  = 'Biens Immobiliers'

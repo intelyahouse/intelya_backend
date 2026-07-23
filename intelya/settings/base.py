@@ -101,7 +101,7 @@ DATABASES = {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': config('DB_NAME', default='intelya_db'),
         'USER': config('DB_USER', default='intelya_user'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
+        'PASSWORD': 'Intelya123@',
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
         'CONN_MAX_AGE': 600,  # Garder les connexions 10 minutes
@@ -182,7 +182,11 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.CamelCaseJSONRenderer',
+        'djangorestframework_camel_case.render.CamelCaseJSONRenderer',
+        'djangorestframework_camel_case.render.CamelCaseBrowsableAPIRenderer',
+    ),
+    'DEFAULT_PARSER_CLASSES': (
+        'djangorestframework_camel_case.parser.CamelCaseJSONParser',
     ),
     'EXCEPTION_HANDLER': 'core.exceptions.custom_exception_handler',
     # Throttling granulaire
@@ -489,7 +493,7 @@ CSP_BASE_URI    = ("'self'",)
 
 
 # DJANGO-CACHALOT — Cache auto requêtes
-CACHALOT_ENABLED = True
+CACHALOT_ENABLED = False
 CACHALOT_CACHE   = 'default'
 CACHALOT_TIMEOUT = 300  # 5 minutes
 CACHALOT_UNCACHABLE_TABLES = [

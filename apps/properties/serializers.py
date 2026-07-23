@@ -58,6 +58,9 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     is_liked     = serializers.SerializerMethodField()
     has_video    = serializers.SerializerMethodField()
     has_floor_plan = serializers.SerializerMethodField()
+    # PANORAMA 3D
+    panorama_url = serializers.URLField(required=False, allow_blank=True)
+    panorama_type = serializers.CharField(required=False)
 
     class Meta:
         model  = Property
@@ -68,6 +71,8 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             'area_sqm', 'floor', 'total_floors', 'is_furnished',
             # Localisation SANS adresse complète
             'city', 'neighborhood',
+            # PANORAMA 3D — AJOUTÉ
+            'panorama_url', 'panorama_type',
             # Équipements africains
             'has_generator', 'has_borehole', 'has_water_tank',
             'has_fence', 'has_security_guard', 'has_parking',
@@ -113,6 +118,10 @@ class PropertyAdminSerializer(PropertyDetailSerializer):
 
 class CreatePropertySerializer(serializers.ModelSerializer):
     """Pour créer ou modifier un bien — réservé aux agents"""
+
+    panorama_url = serializers.URLField(required=False, allow_blank=True)
+    panorama_type = serializers.CharField(required=False)
+
     class Meta:
         model  = Property
         fields = [
@@ -121,6 +130,8 @@ class CreatePropertySerializer(serializers.ModelSerializer):
             'bedrooms', 'bathrooms', 'living_rooms', 'kitchens',
             'area_sqm', 'floor', 'total_floors', 'is_furnished',
             'full_address', 'city', 'neighborhood',
+            # PANORAMA 3D — AJOUTÉ
+            'panorama_url', 'panorama_type',
             'has_generator', 'has_borehole', 'has_water_tank',
             'has_fence', 'has_security_guard', 'has_parking',
             'has_air_conditioning', 'parking_spots',

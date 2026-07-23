@@ -310,6 +310,30 @@ class AIMatchView(APIView):
             'recommendations': result
         }))
 
+class PropertiesByAgentView(APIView):
+    """GET /properties/by-agent/?agent_id=xxx — Propriétés d'un agent spécifique"""
+    permission_classes = [AllowAny]
+    throttle_classes = [SearchThrottle]
+
+    @extend_schema(tags=['Properties'], summary="Biens d'un agent spécifique")
+    def get(self, request):
+        agent_id = request.query_params.get('agent_id')
+        if not agent_id:
+            return Response(
+                error_response("agent_id requis"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        properties = Property.objects.filter(
+            agent__id=agent_id,
+            status='available'
+        ).select_related('agent', 'owner').prefetch_related('photos', 'likes').order_by('-created_at')
+
+        paginator = StandardResultsSetPagination()
+        page_data = paginator.paginate_queryset(properties, request)
+        serializer = PropertyListSerializer(page_data, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
+
 class FeaturedPropertiesView(generics.ListAPIView):
     """Biens en vedette — les plus récents disponibles"""
     permission_classes = [AllowAny]

@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     AIMatchView,
+    PropertiesByAgentView,
     PropertyListView, PropertyDetailView,
     CreatePropertyView, UpdatePropertyView,
     PropertyLikeView, MyFavoritesView,
@@ -11,6 +12,7 @@ from .views import FeaturedPropertiesView
 urlpatterns = [
     path('', PropertyListView.as_view(), name='property-list'),
     path('featured/', FeaturedPropertiesView.as_view(), name='property-featured'),
+    path('by-agent/', PropertiesByAgentView.as_view(), name='properties-by-agent'),  # AJOUTÉ
     path('create/', CreatePropertyView.as_view(), name='property-create'),
     path('favorites/', MyFavoritesView.as_view(), name='favorites'),
     path('agent/', AgentPropertiesView.as_view(), name='agent-properties'),

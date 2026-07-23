@@ -134,7 +134,7 @@ pip install -r requirements.txt
 
 ```sql
 CREATE DATABASE intelya_db;
-CREATE USER intelya_user WITH PASSWORD 'ton_mot_de_passe';
+CREATE USER intelya_user WITH PASSWORD 'Intelya123@';
 GRANT ALL PRIVILEGES ON DATABASE intelya_db TO intelya_user;
 ALTER USER intelya_user SUPERUSER;
 
@@ -285,24 +285,24 @@ Documentation interactive disponible sur :
 
 ### Résumé des routes principales
 
-| Groupe | Préfixe | Description |
-|--------|---------|-------------|
-| Authentification | `/api/v1/auth/` | Inscription, connexion, OTP, mot de passe |
-| Utilisateurs | `/api/v1/users/` | Profil, changement de rôle |
-| Agents | `/api/v1/agents/` | Profils agents, relations owner/client |
-| Propriétaires | `/api/v1/owners/` | Profils, comptes bancaires |
-| Biens | `/api/v1/properties/` | Liste, détail, filtres, likes, favoris |
-| Visites | `/api/v1/visits/` | Demandes, planification, confirmation GPS |
-| Contrats | `/api/v1/contracts/` | Création, signature, expiration |
-| Gestion locative | `/api/v1/leases/` | Loyers, plaintes, renouvellements |
-| Paiements | `/api/v1/payments/` | Transactions, escrow, Mobile Money |
-| Messagerie | `/api/v1/messaging/` | Conversations, messages (WebSocket) |
-| Notifications | `/api/v1/notifications/` | Push Firebase |
-| Avis | `/api/v1/reviews/` | Notations agents et propriétaires |
-| Litiges | `/api/v1/disputes/` | Signalements, résolution |
-| Boost | `/api/v1/boost/` | Mise en avant des annonces |
-| Parrainage | `/api/v1/referrals/` | Codes de parrainage |
-| Admin panel | `/api/v1/admin-panel/` | Gestion utilisateurs, stats |
+| Groupe           | Préfixe                  | Description                               |
+|------------------|--------------------------|-------------------------------------------|
+| Authentification | `/api/v1/auth/`          | Inscription, connexion, OTP, mot de passe |
+| Utilisateurs     | `/api/v1/users/`         | Profil, changement de rôle                |
+| Agents           | `/api/v1/agents/`        | Profils agents, relations owner/client    |
+| Propriétaires    | `/api/v1/owners/`        | Profils, comptes bancaires                |
+| Biens            | `/api/v1/properties/`    | Liste, détail, filtres, likes, favoris    |
+| Visites          | `/api/v1/visits/`        | Demandes, planification, confirmation GPS |
+| Contrats         | `/api/v1/contracts/`     | Création, signature, expiration           |
+| Gestion locative | `/api/v1/leases/`        | Loyers, plaintes, renouvellements         |
+| Paiements        | `/api/v1/payments/`      | Transactions, escrow, Mobile Money        |
+| Messagerie       | `/api/v1/messaging/`     | Conversations, messages (WebSocket)       |
+| Notifications    | `/api/v1/notifications/` | Push Firebase                             |
+| Avis             | `/api/v1/reviews/`       | Notations agents et propriétaires         |
+| Litiges          | `/api/v1/disputes/`      | Signalements, résolution                  |
+| Boost            | `/api/v1/boost/`         | Mise en avant des annonces                |
+| Parrainage       | `/api/v1/referrals/`     | Codes de parrainage                       |
+| Admin panel      | `/api/v1/admin-panel/`   | Gestion utilisateurs, stats               |
 
 ### Authentification
 
