@@ -4,6 +4,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema
+from .models import OwnerAgentRelation
+from django.db.models import Count
+from apps.properties.models import Property
+from apps.visits.models import VisitRequest
+from apps.contracts.models import LeaseContract
 from .models import AgentProfile, ClientAgentRelation, AgentAvailabilitySlot
 from .serializers import (
     AgentProfileSerializer, PublicAgentSerializer,
@@ -74,7 +79,9 @@ class AgentProfileView(APIView):
                 error_response("Profil agent introuvable"),
                 status=status.HTTP_404_NOT_FOUND
             )
-        return Response(success_response(AgentProfileSerializer(profile).data))
+        return Response(success_response(
+            AgentProfileSerializer(profile, context={'request': request}).data
+        ))
 
     @extend_schema(tags=['Agents'], summary="Modifier mon profil agent")
     def patch(self, request):
@@ -85,7 +92,10 @@ class AgentProfileView(APIView):
                 error_response("Profil agent introuvable"),
                 status=status.HTTP_404_NOT_FOUND
             )
-        serializer = AgentProfileSerializer(profile, data=request.data, partial=True)
+        serializer = AgentProfileSerializer(
+            profile, data=request.data, partial=True,
+            context={'request': request}
+        )
         if not serializer.is_valid():
             return Response(
                 error_response("Données invalides", serializer.errors),
@@ -130,6 +140,56 @@ class AgentClientsView(APIView):
             'since': r.created_at,
         } for r in relations]
         return Response(success_response(clients))
+
+    class AgentClientHistoryView(APIView):
+        """Historique (visites + baux) d'un client, limité à ceux gérés par cet agent"""
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    @extend_schema(tags=['Agents'], summary="Historique d'un client")
+    def get(self, request, client_id):
+        # Vérifie que ce client est bien lié à cet agent
+        is_linked = ClientAgentRelation.objects.filter(
+            agent=request.user, client_id=client_id, is_active=True
+        ).exists()
+        if not is_linked:
+            return Response(
+                error_response("Ce client n'est pas lié à votre compte"),
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        visits = VisitRequest.objects.filter(
+            agent=request.user, client_id=client_id
+        ).select_related('visit_property').order_by('-created_at')
+
+        contracts = LeaseContract.objects.filter(
+            agent=request.user, tenant_id=client_id
+        ).select_related('rental_property').order_by('-created_at')
+
+        visits_data = [{
+            'id': str(v.id),
+            'property_title': v.visit_property.title,
+            'property_id': str(v.visit_property.id),
+            'status': v.status,
+            'scheduled_date': v.scheduled_date,
+            'scheduled_time': v.scheduled_time,
+            'created_at': v.created_at,
+        } for v in visits]
+
+        contracts_data = [{
+            'id': str(c.id),
+            'property_title': c.rental_property.title,
+            'property_id': str(c.rental_property.id),
+            'status': c.status,
+            'monthly_rent': c.monthly_rent,
+            'start_date': c.start_date,
+            'end_date': c.end_date,
+            'signed_at': c.signed_at,
+        } for c in contracts]
+
+        return Response(success_response({
+            'visits': visits_data,
+            'contracts': contracts_data,
+        }))
 
 
 class AgentAvailabilityView(APIView):
@@ -208,3 +268,134 @@ class ChooseAgentView(APIView):
             ))
 
         return Response(error_response("Action non autorisée"), status=status.HTTP_400_BAD_REQUEST)
+
+class AgentOwnersView(APIView):
+    """Liste des proprietaires lies a l'agent"""
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    @extend_schema(tags=['Agents'], summary="Mes proprietaires")
+    def get(self, request):
+        relations = OwnerAgentRelation.objects.filter(
+            agent=request.user, status="active"
+        ).select_related('owner')
+
+        # Nombre de biens gérés par cet agent, par propriétaire (1 seule requête)
+        counts = dict(
+            Property.objects.filter(agent=request.user)
+            .values_list('owner_id')
+            .annotate(count=Count('id'))
+        )
+
+        owners = [{
+            'id': str(r.owner.id),
+            'full_name': r.owner.get_full_name(),
+            'email': r.owner.email,
+            'phone': r.owner.phone,
+            'since': r.contract_start,
+            'properties_count': counts.get(r.owner.id, 0),
+        } for r in relations]
+        return Response(success_response(owners))
+
+
+class AgentReportsView(APIView):
+    """Statistiques et rapports de l'agent (revenus, biens, transactions)"""
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    @staticmethod
+    def _add_months(date, n):
+        month_index = date.month - 1 + n
+        year  = date.year + month_index // 12
+        month = month_index % 12 + 1
+        return date.replace(year=year, month=month)
+
+    @extend_schema(tags=['Agents'], summary="Mes rapports / statistiques")
+    def get(self, request):
+        from django.db.models import Sum
+        from django.db.models.functions import TruncMonth
+        from django.utils import timezone
+        from apps.payments.models import Transaction
+
+        try:
+            months = min(max(int(request.query_params.get('months', 6)), 1), 24)
+        except (TypeError, ValueError):
+            months = 6
+
+        now = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        period_start = self._add_months(now, -(months - 1))
+
+        properties_qs   = Property.objects.filter(agent=request.user)
+        transactions_qs = Transaction.objects.filter(receiver=request.user, status='completed')
+
+        # ===== RÉSUMÉ =====
+
+        total_properties = properties_qs.count()
+        rented_count      = properties_qs.filter(status='rented').count()
+        total_revenue      = transactions_qs.aggregate(total=Sum('net_amount'))['total'] or 0
+        total_clients       = ClientAgentRelation.objects.filter(agent=request.user, is_active=True).count()
+        total_owners         = OwnerAgentRelation.objects.filter(agent=request.user, status='active').count()
+
+        summary = {
+            'total_revenue': total_revenue,
+            'total_properties': total_properties,
+            'rented_properties': rented_count,
+            'occupancy_rate': round((rented_count / total_properties) * 100, 1) if total_properties else 0,
+            'total_clients': total_clients,
+            'total_owners': total_owners,
+        }
+
+        # ===== BIENS PAR STATUT =====
+
+        status_counts = dict(
+            properties_qs.values_list('status').annotate(count=Count('id'))
+        )
+        properties_by_status = [{
+            'status': key,
+            'label': label,
+            'count': status_counts.get(key, 0),
+        } for key, label in Property.STATUS_CHOICES]
+
+        # ===== REVENUS PAR MOIS =====
+
+        monthly = (
+            transactions_qs
+            .filter(completed_at__gte=period_start)
+            .annotate(month=TruncMonth('completed_at'))
+            .values('month')
+            .annotate(total=Sum('net_amount'))
+            .order_by('month')
+        )
+        monthly_map = {row['month'].strftime('%Y-%m'): row['total'] for row in monthly if row['month']}
+
+        revenue_by_month = []
+        cursor = period_start
+        for _ in range(months):
+            key = cursor.strftime('%Y-%m')
+            revenue_by_month.append({
+                'month': key,
+                'label': cursor.strftime('%b %Y'),
+                'total': monthly_map.get(key, 0),
+            })
+            cursor = self._add_months(cursor, 1)
+
+        # ===== TRANSACTIONS PAR TYPE =====
+
+        by_type = (
+            transactions_qs
+            .values('transaction_type')
+            .annotate(total=Sum('net_amount'), count=Count('id'))
+            .order_by('-total')
+        )
+        type_labels = dict(Transaction.TYPE_CHOICES)
+        transactions_by_type = [{
+            'type': row['transaction_type'],
+            'label': type_labels.get(row['transaction_type'], row['transaction_type']),
+            'total': row['total'],
+            'count': row['count'],
+        } for row in by_type]
+
+        return Response(success_response({
+            'summary': summary,
+            'properties_by_status': properties_by_status,
+            'revenue_by_month': revenue_by_month,
+            'transactions_by_type': transactions_by_type,
+        }))

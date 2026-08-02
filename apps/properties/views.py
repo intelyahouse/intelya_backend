@@ -110,12 +110,17 @@ class PropertyDetailView(APIView):
         # Incrémenter vues (sans bloquer la réponse)
         Property.objects.filter(id=property_id).update(views_count=prop.views_count + 1)
 
-        if request.user.is_authenticated and request.user.role == 'admin':
+        can_see_full_address = (
+            request.user.is_authenticated and (
+                request.user.role == 'admin' or
+                prop.agent_id == request.user.id or
+                prop.owner_id == request.user.id
+            )
+        )
+        if can_see_full_address:
             serializer = PropertyAdminSerializer(prop, context={'request': request})
         else:
             serializer = PropertyDetailSerializer(prop, context={'request': request})
-
-        return Response(success_response(serializer.data))
 
 
 class CreatePropertyView(APIView):
@@ -224,7 +229,30 @@ class AgentPropertiesView(APIView):
     def get(self, request):
         properties = Property.objects.filter(
             agent=request.user
-        ).select_related('owner').prefetch_related('photos').order_by('-created_at')
+        )
+
+        owner_id = request.query_params.get('owner_id')
+        if owner_id:
+            properties = properties.filter(owner_id=owner_id)
+
+        search = request.query_params.get('search')
+        if search:
+            from django.db.models import Q
+            properties = properties.filter(
+                Q(title__icontains=search) |
+                Q(city__icontains=search) |
+                Q(neighborhood__icontains=search)
+            )
+
+        property_type = request.query_params.get('property_type')
+        if property_type:
+            properties = properties.filter(property_type=property_type)
+
+        prop_status = request.query_params.get('status')
+        if prop_status:
+            properties = properties.filter(status=prop_status)
+
+        properties = properties.select_related('owner').prefetch_related('photos').order_by('-created_at')
         paginator  = StandardResultsSetPagination()
         page_data  = paginator.paginate_queryset(properties, request)
         serializer = PropertyDetailSerializer(page_data, many=True, context={'request': request})
@@ -320,7 +348,7 @@ class FeaturedPropertiesView(generics.ListAPIView):
         return Property.objects.filter(
             status='available'
         ).select_related(
-            'agent__user', 'owner__user'
+            'agent', 'owner'
         ).prefetch_related('photos').order_by('-created_at')[:6]
 
     def list(self, request, *args, **kwargs):

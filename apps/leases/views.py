@@ -103,11 +103,24 @@ class DebtManagementView(APIView):
                 new_due_date=serializer.validated_data.get('new_due_date'),
                 notes=serializer.validated_data.get('notes', '')
             )
+
+            update_fields = []
             if action == 'extend' and serializer.validated_data.get('new_due_date'):
                 payment.due_date = serializer.validated_data['new_due_date']
-                payment.save(update_fields=['due_date'])
+                update_fields.append('due_date')
+                payment.status = 'pending'
+                update_fields.append('status')
+            elif action == 'claim':
+                payment.status = 'disputed'
+                update_fields.append('status')
 
-        return Response(success_response(message=f"Action '{action}' enregistrée"))
+            if update_fields:
+                payment.save(update_fields=update_fields)
+
+        return Response(success_response(
+            RentPaymentSerializer(payment).data,
+            f"Action '{action}' enregistrée"
+        ))
 
 
 class SubmitComplaintView(APIView):

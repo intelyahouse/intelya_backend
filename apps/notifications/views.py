@@ -40,7 +40,7 @@ class MarkOneReadView(APIView):
         try:
             notif = Notification.objects.get(
                 id=notification_id,
-                user=request.user
+                recipient=request.user
             )
             notif.is_read = True
             notif.read_at = timezone.now()

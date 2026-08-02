@@ -108,7 +108,6 @@ DATABASES = {
         'CONN_HEALTH_CHECKS': True,  # Vérifier les connexions mortes
         'OPTIONS': {
             'connect_timeout': 10,
-            'options': '-c default_transaction_isolation=read\ committed',
         },
     }
 }
@@ -245,12 +244,18 @@ AUTHENTICATION_BACKENDS = [
 
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'
+
+# Utilisé par apps/users/google_auth.py pour vérifier l'audience du token
+# (settings.GOOGLE_CLIENT_ID) — distinct de la config allauth ci-dessous
+# qui lit la même variable d'env mais ne l'exposait pas comme attribut Django.
+GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
+
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
         'APP': {
-            'client_id': config('GOOGLE_CLIENT_ID', default=''),
+            'client_id': GOOGLE_CLIENT_ID,
             'secret': config('GOOGLE_CLIENT_SECRET', default=''),
         }
     },
@@ -478,8 +483,8 @@ AXES_NEVER_LOCKOUT_ALLOWLIST = ['127.0.0.1']  # IPs jamais bloquées
 
 # CONTENT SECURITY POLICY
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC  = ("'self'", "'unsafe-inline'", "https://apis.google.com")
-CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com")
+CSP_SCRIPT_SRC  = ("'self'", "'unsafe-inline'", "https://apis.google.com", "https://cdn.jsdelivr.net")
+CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net")
 CSP_IMG_SRC     = ("'self'", "data:", "https:", "blob:")
 CSP_FONT_SRC    = ("'self'", "https://fonts.gstatic.com")
 CSP_CONNECT_SRC = ("'self'", "https://pay.esicia.com", "https://www.kpay.africa")

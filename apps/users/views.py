@@ -45,7 +45,7 @@ class RegisterView(APIView):
         self._send_otp(user)
         return Response(
             success_response(
-                UserProfileSerializer(user).data,
+                UserProfileSerializer(user, context={'request': request}).data,
                 "Compte créé. Vérifiez votre téléphone pour le code OTP."
             ),
             status=status.HTTP_201_CREATED
@@ -133,7 +133,7 @@ class LoginView(APIView):
         return Response(success_response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'user': UserProfileSerializer(user).data
+            'user': UserProfileSerializer(user, context={'request': request}).data
         }, "Connexion réussie"))
 
 
@@ -193,7 +193,19 @@ class VerifyOTPView(APIView):
         user.is_phone_verified = True
         user.save(update_fields=['is_phone_verified'])
 
-        return Response(success_response(message="Téléphone vérifié avec succès ✅"))
+        if not user.has_usable_password():
+            from rest_framework_simplejwt.tokens import RefreshToken
+            refresh = RefreshToken.for_user(user)
+            return Response(success_response(
+                {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'user': UserProfileSerializer(user, context={'request': request}).data,
+                },
+                "Téléphone vérifié avec succès !"
+            ))
+
+        return Response(success_response(message="Téléphone vérifié avec succès !"))
 
 
 @method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
@@ -236,13 +248,14 @@ class UserProfileView(APIView):
     @extend_schema(tags=['Users'], summary="Mon profil")
     def get(self, request):
         return Response(success_response(
-            UserProfileSerializer(request.user).data
+            UserProfileSerializer(request.user, context={'request': request}).data
         ))
 
     @extend_schema(tags=['Users'], summary="Modifier mon profil", request=UserProfileSerializer)
     def patch(self, request):
         serializer = UserProfileSerializer(
-            request.user, data=request.data, partial=True
+            request.user, data=request.data, partial=True,
+            context={'request': request}
         )
         if not serializer.is_valid():
             return Response(
@@ -251,7 +264,6 @@ class UserProfileView(APIView):
             )
         serializer.save()
         return Response(success_response(serializer.data, "Profil mis à jour"))
-
 
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
@@ -457,6 +469,57 @@ class GoogleAuthView(APIView):
         return Response(success_response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'user': UserProfileSerializer(user).data,
+            'user': UserProfileSerializer(user, context={'request': request}).data,
             'needs_phone': False,
         }, "Connexion Google réussie"))
+    
+
+class GoogleCompletePhoneView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Auth'],
+        summary="Finaliser l'inscription Google (téléphone)",
+        description="Enregistre le téléphone pour un compte créé via Google et envoie un OTP SMS."
+    )
+    def post(self, request):
+        user_id = request.data.get('user_id')
+        phone = request.data.get('phone')
+
+        if not user_id or not phone:
+            return Response(
+                error_response("user_id et phone sont requis"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(id=user_id, is_phone_verified=False)
+        except User.DoesNotExist:
+            return Response(
+                error_response("Compte introuvable ou déjà vérifié"),
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if User.objects.filter(phone=phone).exclude(id=user.id).exists():
+            return Response(
+                error_response("Ce numéro est déjà utilisé par un autre compte"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.phone = phone
+        user.save()
+
+        code = generate_otp()
+        expires_at = timezone.now() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+        OTPVerification.objects.filter(user=user, is_used=False).update(is_used=True)
+        OTPVerification.objects.create(
+            user=user, code=code,
+            phone=user.phone, expires_at=expires_at
+        )
+        print(f"[SMS] Code OTP pour {user.phone}: {code}")
+
+        return Response(success_response(
+            {'user_id': str(user.id), 'phone': user.phone},
+            "Code envoyé par SMS. Vérifiez votre téléphone."
+        ))
+        

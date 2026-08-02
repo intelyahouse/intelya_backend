@@ -5,15 +5,22 @@ from .models import Conversation, Message, ForumMessage
 class MessageSerializer(serializers.ModelSerializer):
     sender_name  = serializers.CharField(source='sender.get_full_name', read_only=True)
     sender_role  = serializers.CharField(source='sender.role', read_only=True)
+    sender_photo = serializers.SerializerMethodField()
     is_mine      = serializers.SerializerMethodField()
 
     class Meta:
         model  = Message
         fields = [
-            'id', 'sender_name', 'sender_role', 'is_mine',
+            'id', 'sender_name', 'sender_role', 'sender_photo', 'is_mine',
             'message_type', 'content', 'file',
             'is_read', 'read_at', 'created_at'
         ]
+
+    def get_sender_photo(self, obj):
+        request = self.context.get('request')
+        if request and obj.sender.profile_photo:
+            return request.build_absolute_uri(obj.sender.profile_photo.url)
+        return None
 
     def get_is_mine(self, obj):
         request = self.context.get('request')
@@ -54,10 +61,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         if request:
             other = obj.participants.exclude(id=request.user.id).first()
             if other:
+                photo_url = None
+                if other.profile_photo:
+                    photo_url = request.build_absolute_uri(other.profile_photo.url)
                 return {
                     'id': str(other.id),
                     'name': other.get_full_name(),
                     'role': other.role,
+                    'profile_photo': photo_url,
                 }
         return None
 

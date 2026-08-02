@@ -65,8 +65,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'type': 'chat_message',
                     'message': {
                         'id': str(message.id),
+                        'sender_id': str(self.user.id),
                         'sender_name': self.user.get_full_name(),
                         'sender_role': self.user.role,
+                        'sender_photo': self.user.profile_photo.url if self.user.profile_photo else None,
                         'content': content,
                         'created_at': message.created_at.isoformat(),
                     }
