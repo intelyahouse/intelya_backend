@@ -141,8 +141,8 @@ class AgentClientsView(APIView):
         } for r in relations]
         return Response(success_response(clients))
 
-    class AgentClientHistoryView(APIView):
-        """Historique (visites + baux) d'un client, limité à ceux gérés par cet agent"""
+class AgentClientHistoryView(APIView):
+    """Historique (visites + baux) d'un client, limité à ceux gérés par cet agent"""
     permission_classes = [IsAuthenticated, IsAgent]
 
     @extend_schema(tags=['Agents'], summary="Historique d'un client")
