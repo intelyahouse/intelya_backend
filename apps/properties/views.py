@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Q, F
 from drf_spectacular.utils import extend_schema
 from .models import Property, PropertyPhoto, PropertyLike
 from .serializers import PropertyListSerializer, PropertyDetailSerializer, PropertyAdminSerializer, CreatePropertySerializer
@@ -38,7 +38,11 @@ class PropertyListView(APIView):
         # Cache pour les recherches anonymes
         cache_key = None
         if not request.user.is_authenticated:
-            cache_key = f"properties:{city}:{neighborhood}:{prop_type}:{min_price}:{max_price}:{bedrooms}:{page}"
+            cache_key = (
+                f"properties:{city}:{neighborhood}:{prop_type}:"
+                f"{min_price}:{max_price}:{bedrooms}:"
+                f"{is_furnished}:{has_generator}:{has_parking}:{page}"
+            )
             cached = cache.get(cache_key)
             if cached:
                 return Response(success_response(cached))
@@ -108,7 +112,11 @@ class PropertyDetailView(APIView):
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
         # Incrémenter vues (sans bloquer la réponse)
-        Property.objects.filter(id=property_id).update(views_count=prop.views_count + 1)
+        Property.objects.filter(
+            id=property_id
+        ).update(
+            views_count=F("views_count") + 1
+        )
 
         can_see_full_address = (
             request.user.is_authenticated and (
@@ -121,6 +129,8 @@ class PropertyDetailView(APIView):
             serializer = PropertyAdminSerializer(prop, context={'request': request})
         else:
             serializer = PropertyDetailSerializer(prop, context={'request': request})
+
+        return Response(success_response(serializer.data))
 
 
 class CreatePropertyView(APIView):
@@ -203,10 +213,21 @@ class PropertyLikeView(APIView):
         like, created = PropertyLike.objects.get_or_create(property=prop, user=request.user)
         if not created:
             like.delete()
-            Property.objects.filter(id=property_id).update(likes_count=max(0, prop.likes_count - 1))
+            Property.objects.filter(
+                id=property_id
+            ).update(
+                likes_count=max(
+                    0,
+                    prop.likes_count - 1
+                )
+            )
             return Response(success_response(message="Like retiré"))
 
-        Property.objects.filter(id=property_id).update(likes_count=prop.likes_count + 1)
+        Property.objects.filter(
+            id=property_id
+        ).update(
+            likes_count=F("likes_count") + 1
+        )
         return Response(success_response(message="Bien liké ❤️"))
 
 
@@ -237,7 +258,6 @@ class AgentPropertiesView(APIView):
 
         search = request.query_params.get('search')
         if search:
-            from django.db.models import Q
             properties = properties.filter(
                 Q(title__icontains=search) |
                 Q(city__icontains=search) |
