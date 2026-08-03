@@ -165,6 +165,21 @@ class AgentClientHistoryView(APIView):
             agent=request.user, tenant_id=client_id
         ).select_related('rental_property').order_by('-created_at')
 
+        PAGE_SIZE = 10
+
+        def paginate(queryset, page_param):
+            try:
+                page = max(1, int(request.query_params.get(page_param, 1)))
+            except (TypeError, ValueError):
+                page = 1
+            count = queryset.count()
+            total_pages = max(1, -(-count // PAGE_SIZE))  # ceil division
+            start = (page - 1) * PAGE_SIZE
+            return queryset[start:start + PAGE_SIZE], count, total_pages, page
+
+        visits_page_qs, visits_count, visits_total_pages, visits_page = paginate(visits, 'visits_page')
+        contracts_page_qs, contracts_count, contracts_total_pages, contracts_page = paginate(contracts, 'contracts_page')
+
         visits_data = [{
             'id': str(v.id),
             'property_title': v.visit_property.title,
@@ -173,7 +188,7 @@ class AgentClientHistoryView(APIView):
             'scheduled_date': v.scheduled_date,
             'scheduled_time': v.scheduled_time,
             'created_at': v.created_at,
-        } for v in visits]
+        } for v in visits_page_qs]
 
         contracts_data = [{
             'id': str(c.id),
@@ -184,11 +199,21 @@ class AgentClientHistoryView(APIView):
             'start_date': c.start_date,
             'end_date': c.end_date,
             'signed_at': c.signed_at,
-        } for c in contracts]
+        } for c in contracts_page_qs]
 
         return Response(success_response({
-            'visits': visits_data,
-            'contracts': contracts_data,
+            'visits': {
+                'results': visits_data,
+                'count': visits_count,
+                'total_pages': visits_total_pages,
+                'current_page': visits_page,
+            },
+            'contracts': {
+                'results': contracts_data,
+                'count': contracts_count,
+                'total_pages': contracts_total_pages,
+                'current_page': contracts_page,
+            },
         }))
 
 
