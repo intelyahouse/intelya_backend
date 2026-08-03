@@ -35,7 +35,8 @@ class Property(models.Model):
     owner = models.ForeignKey(
         User, on_delete=models.CASCADE,
         related_name='properties',
-        limit_choices_to={'role': 'owner'}
+        limit_choices_to={'role': 'owner'},
+        null=True, blank=True,
     )
     agent = models.ForeignKey(
         User, on_delete=models.CASCADE,

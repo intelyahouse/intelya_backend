@@ -140,16 +140,16 @@ class CreatePropertyView(APIView):
     def post(self, request):
         from apps.agents.models import OwnerAgentRelation
         owner_id = request.data.get('owner_id')
-        if not owner_id:
-            return Response(error_response("owner_id requis"), status=status.HTTP_400_BAD_REQUEST)
+        owner = None
 
-        try:
-            owner = User.objects.get(id=owner_id, role='owner')
-        except User.DoesNotExist:
-            return Response(error_response("Propriétaire introuvable"), status=status.HTTP_404_NOT_FOUND)
+        if owner_id:
+            try:
+                owner = User.objects.get(id=owner_id, role='owner')
+            except User.DoesNotExist:
+                return Response(error_response("Propriétaire introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        if not OwnerAgentRelation.objects.filter(agent=request.user, owner=owner, status='active').exists():
-            return Response(error_response("Ce propriétaire n'est pas lié à votre agence"), status=status.HTTP_403_FORBIDDEN)
+            if not OwnerAgentRelation.objects.filter(agent=request.user, owner=owner, status='active').exists():
+                return Response(error_response("Ce propriétaire n'est pas lié à votre agence"), status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreatePropertySerializer(data=request.data)
         if not serializer.is_valid():
@@ -157,7 +157,6 @@ class CreatePropertyView(APIView):
 
         prop = serializer.save(owner=owner, agent=request.user)
 
-        # Invalider le cache de recherche
         cache.delete_pattern("intelya:properties:*")
 
         return Response(
