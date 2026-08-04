@@ -47,3 +47,6 @@ if 'pytest' in sys.modules or 'test' in sys.argv:
         'DEFAULT_THROTTLE_CLASSES': [],
         'DEFAULT_THROTTLE_RATES': {},
     }
+
+# Désactivé en dev pour faciliter les tests (reste actif en production)
+RATELIMIT_ENABLE = False

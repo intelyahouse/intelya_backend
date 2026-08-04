@@ -62,7 +62,7 @@ class RegisterView(APIView):
         print(f"[SMS] Code OTP pour {user.phone}: {code}")
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -155,7 +155,7 @@ class LogoutView(APIView):
             )
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', block=True), name='post')
+@method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
 

@@ -1,6 +1,7 @@
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status
+from django_ratelimit.exceptions import Ratelimited
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,16 @@ def custom_exception_handler(exc, context):
     Retourne toujours le même format JSON propre.
     Ne révèle jamais les détails internes en production.
     """
+    # Cas rate limiting : message clair au lieu du 403 générique trompeur
+    if isinstance(exc, Ratelimited):
+        return Response({
+            'success': False,
+            'error': {
+                'code': 429,
+                'message': "Trop de tentatives. Merci de patienter une minute avant de réessayer.",
+            }
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
     response = exception_handler(exc, context)
 
     if response is not None:
@@ -22,7 +33,6 @@ def custom_exception_handler(exc, context):
                 'message': _get_clean_message(response.data, response.status_code),
             }
         }
-        # En développement on ajoute les détails
         from django.conf import settings
         if settings.DEBUG:
             error_data['error']['details'] = response.data
@@ -30,7 +40,6 @@ def custom_exception_handler(exc, context):
         response.data = error_data
         return response
 
-    # Erreur non gérée par DRF (500)
     logger.error(f"Erreur non gérée: {exc}", exc_info=True)
     return Response({
         'success': False,
@@ -53,11 +62,9 @@ def _get_clean_message(data, status_code):
         500: "Erreur serveur interne.",
     }
 
-    # Essayer d'extraire un message utile sans révéler les internals
     if isinstance(data, dict):
         if 'detail' in data:
             msg = str(data['detail'])
-            # Ne pas révéler les noms de tables/modèles
             if 'DoesNotExist' in msg or 'matching query' in msg:
                 return MESSAGES.get(404, "Ressource introuvable.")
             return msg
@@ -65,7 +72,6 @@ def _get_clean_message(data, status_code):
         if 'non_field_errors' in data:
             return str(data['non_field_errors'][0])
 
-        # Erreur de validation — retourner le premier champ
         for field, errors in data.items():
             if isinstance(errors, list) and errors:
                 return f"{field}: {errors[0]}"
