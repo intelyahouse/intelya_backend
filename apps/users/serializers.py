@@ -99,6 +99,7 @@ class OTPResendSerializer(serializers.Serializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
+    has_usable_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -106,19 +107,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'full_name', 'role', 'profile_photo', 'is_validated',
             'is_phone_verified', 'is_blocked', 'validation_status',
-            'referral_code', 'language', 'date_joined'
+            'referral_code', 'language', 'date_joined', 'has_usable_password'
         ]
         read_only_fields = [
             'id', 'role', 'is_validated', 'is_phone_verified',
-            'is_blocked', 'validation_status', 'referral_code', 'date_joined'
+            'is_blocked', 'validation_status', 'referral_code', 'date_joined',
+            'has_usable_password'
         ]
 
     def get_full_name(self, obj):
         return obj.get_full_name()
 
+    def get_has_usable_password(self, obj):
+        return obj.has_usable_password()
+
 
 class ChangePasswordSerializer(serializers.Serializer):
-    old_password = serializers.CharField(write_only=True)
+    # Optionnel : requis seulement si le compte a deja un vrai mot de passe
+    # (voir ChangePasswordView -> user.has_usable_password())
+    old_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     new_password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True)
 

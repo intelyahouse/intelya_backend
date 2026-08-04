@@ -278,11 +278,16 @@ class ChangePasswordView(APIView):
             )
 
         user = request.user
-        if not user.check_password(serializer.validated_data['old_password']):
-            return Response(
-                error_response("Ancien mot de passe incorrect"),
-                status=status.HTTP_400_BAD_REQUEST
-            )
+
+        # Compte cree via Google sans mot de passe reel -> pas besoin de l'ancien,
+        # c'est la toute premiere definition. Sinon, on l'exige pour securiser.
+        if user.has_usable_password():
+            old_password = serializer.validated_data.get('old_password')
+            if not old_password or not user.check_password(old_password):
+                return Response(
+                    error_response("Ancien mot de passe incorrect"),
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         user.set_password(serializer.validated_data['new_password'])
         user.save()
@@ -446,31 +451,22 @@ class GoogleAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if needs_phone:
-            return Response(
-                success_response(
-                    {
-                        'needs_phone': True,
-                        'email': user.email,
-                        'user_id': str(user.id),
-                    },
-                    "Veuillez vérifier votre numéro de téléphone pour continuer."
-                ),
-                status=status.HTTP_200_OK
-            )
-
         if user.is_blocked:
             return Response(
                 error_response("Votre compte est bloqué."),
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # On n'attend plus la verification du telephone pour donner l'acces :
+        # l'utilisateur entre directement sur la plateforme (role client par defaut).
+        # needs_phone reste dans la reponse a titre informatif pour afficher
+        # une invitation (pas un mur) a verifier son telephone plus tard.
         refresh = RefreshToken.for_user(user)
         return Response(success_response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
             'user': UserProfileSerializer(user, context={'request': request}).data,
-            'needs_phone': False,
+            'needs_phone': needs_phone,
         }, "Connexion Google réussie"))
     
 

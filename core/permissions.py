@@ -120,3 +120,16 @@ class IsAdminOrReadOnly(BasePermission):
             request.user.is_authenticated and
             request.user.role == "admin"
         )
+
+class IsPhoneVerified(BasePermission):
+    """Exige un telephone verifie - a utiliser sur les actions sensibles
+    (contacter un agent, reserver une visite, envoyer un message, signer un contrat)"""
+    message = "Merci de verifier votre numero de telephone avant de continuer."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.is_phone_verified
+        )
+
