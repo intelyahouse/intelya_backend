@@ -71,21 +71,15 @@ class PropertyListView(APIView):
         if has_parking == 'true':
             queryset = queryset.filter(has_parking=True)
 
-        # Biens de l'agent du client EN PREMIER
+        # Une fois un agent choisi, le client ne parcourt QUE le portefeuille
+        # de son agent (protection anti-vol de clients entre agents).
         if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
             relation = ClientAgentRelation.objects.filter(
                 client=request.user, is_active=True
             ).select_related('agent').first()
 
             if relation:
-                from django.db.models import Case, When, IntegerField, Value
-                queryset = queryset.annotate(
-                    agent_priority=Case(
-                        When(agent=relation.agent, then=Value(1)),
-                        default=Value(0),
-                        output_field=IntegerField()
-                    )
-                ).order_by('-agent_priority', '-created_at')
+                queryset = queryset.filter(agent=relation.agent)
 
         # Pagination
         paginator   = StandardResultsSetPagination()
@@ -130,7 +124,31 @@ class PropertyDetailView(APIView):
         else:
             serializer = PropertyDetailSerializer(prop, context={'request': request})
 
-        return Response(success_response(serializer.data))
+        data = serializer.data
+
+        if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
+            relation = ClientAgentRelation.objects.filter(
+                client=request.user, is_active=True
+            ).select_related('agent__agent_profile').first()
+
+            if relation and prop.agent_id != relation.agent_id:
+                data['agent_name'] = None
+                data['agent_profile_id'] = None
+                data['owner_name'] = None
+                data['owner_id'] = None
+                data['belongs_to_other_agent'] = True
+                data['my_agent'] = {
+                    'id': str(relation.agent.id),
+                    'full_name': relation.agent.get_full_name(),
+                    'profile_photo': (
+                        request.build_absolute_uri(relation.agent.profile_photo.url)
+                        if relation.agent.profile_photo else None
+                    ),
+                }
+            else:
+                data['belongs_to_other_agent'] = False
+
+        return Response(success_response(data))
 
 
 class CreatePropertyView(APIView):

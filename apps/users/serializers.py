@@ -100,6 +100,7 @@ class OTPResendSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     has_usable_password = serializers.SerializerMethodField()
+    my_agent = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -107,12 +108,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'email', 'phone', 'first_name', 'last_name',
             'full_name', 'role', 'profile_photo', 'is_validated',
             'is_phone_verified', 'is_blocked', 'validation_status',
-            'referral_code', 'language', 'date_joined', 'has_usable_password'
+            'referral_code', 'language', 'date_joined', 'has_usable_password',
+            'my_agent'
         ]
         read_only_fields = [
             'id', 'role', 'is_validated', 'is_phone_verified',
             'is_blocked', 'validation_status', 'referral_code', 'date_joined',
-            'has_usable_password'
+            'has_usable_password', 'my_agent'
         ]
 
     def get_full_name(self, obj):
@@ -120,6 +122,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_has_usable_password(self, obj):
         return obj.has_usable_password()
+
+    def get_my_agent(self, obj):
+        if obj.role not in ('client', 'tenant'):
+            return None
+        from apps.agents.models import ClientAgentRelation
+        relation = ClientAgentRelation.objects.filter(
+            client=obj, is_active=True
+        ).select_related('agent').first()
+        if not relation:
+            return None
+        request = self.context.get('request')
+        photo = relation.agent.profile_photo
+        return {
+            'id': str(relation.agent.id),
+            'full_name': relation.agent.get_full_name(),
+            'profile_photo': (
+                request.build_absolute_uri(photo.url)
+                if photo and request else None
+            ),
+        }
 
 
 class ChangePasswordSerializer(serializers.Serializer):

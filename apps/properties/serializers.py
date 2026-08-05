@@ -53,12 +53,17 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     photos       = PropertyPhotoSerializer(many=True, read_only=True)
     cover_photo  = serializers.SerializerMethodField()
     agent_name   = serializers.CharField(source='agent.get_full_name', read_only=True)
+    agent_profile_id = serializers.SerializerMethodField()
     # agent_phone masqué — visible uniquement après bail signé
     owner_id     = serializers.CharField(source='owner.id', read_only=True)
     owner_name   = serializers.CharField(source='owner.get_full_name', read_only=True)
     is_liked     = serializers.SerializerMethodField()
     has_video    = serializers.SerializerMethodField()
     has_floor_plan = serializers.SerializerMethodField()
+
+    def get_agent_profile_id(self, obj):
+        profile = getattr(obj.agent, 'agent_profile', None)
+        return str(profile.id) if profile else None
 
     class Meta:
         model  = Property
@@ -81,7 +86,7 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             # Photos et médias
             'photos', 'cover_photo', 'has_video', 'has_floor_plan',
             # Agent et propriétaire
-            'agent_name', 'owner_id', 'owner_name',
+            'agent_name', 'agent_profile_id', 'owner_id', 'owner_name',
             'is_liked', 'created_at'
         ]
 
