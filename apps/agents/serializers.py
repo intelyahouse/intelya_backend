@@ -36,7 +36,7 @@ class AgentProfileSerializer(serializers.ModelSerializer):
 class PublicAgentSerializer(serializers.ModelSerializer):
     """Vue publique de l'agent — pour les clients et propriétaires sans agent"""
     full_name     = serializers.CharField(source='user.get_full_name', read_only=True)
-    profile_photo = serializers.ImageField(source='user.profile_photo', read_only=True)
+    profile_photo = serializers.SerializerMethodField()
     has_active_boost = serializers.SerializerMethodField()
 
     class Meta:
@@ -48,6 +48,13 @@ class PublicAgentSerializer(serializers.ModelSerializer):
             'visit_fee_is_free', 'visit_fee',
             'total_transactions', 'has_active_boost'
         ]
+
+    def get_profile_photo(self, obj):
+        photo = obj.user.profile_photo
+        if not photo:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(photo.url) if request else photo.url
 
     def get_has_active_boost(self, obj):
         return obj.user.boosts.filter(is_active=True).exists() if hasattr(obj.user, 'boosts') else False

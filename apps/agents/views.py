@@ -62,7 +62,7 @@ class AgentListView(APIView):
             )
         ).order_by('-boost_priority', '-reliability_score')
 
-        serializer = PublicAgentSerializer(agents, many=True)
+        serializer = PublicAgentSerializer(agents, many=True, context={'request': request})
         return Response(success_response(serializer.data))
 
 
@@ -118,7 +118,7 @@ class AgentPublicProfileView(APIView):
                 error_response("Agent introuvable"),
                 status=status.HTTP_404_NOT_FOUND
             )
-        return Response(success_response(PublicAgentSerializer(profile).data))
+        return Response(success_response(PublicAgentSerializer(profile, context={'request': request}).data))
 
 
 class AgentClientsView(APIView):
