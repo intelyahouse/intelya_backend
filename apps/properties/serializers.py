@@ -128,7 +128,4 @@ class CreatePropertySerializer(serializers.ModelSerializer):
             'available_from', 'min_lease_months',
         ]
 
-    def validate_description(self, value):
-        if len(value.split()) < 8:
-            raise serializers.ValidationError("La description doit contenir au minimum 15 mots.")
-        return value
+
