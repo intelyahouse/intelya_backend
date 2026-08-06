@@ -12,6 +12,7 @@ from .serializers import (
 )
 from core.permissions import IsAgent
 from core.utils import success_response, error_response
+from apps.notifications.utils import notify
 
 
 class MyConversationsView(APIView):
@@ -88,6 +89,22 @@ class ConversationMessagesView(APIView):
 
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=['last_message_at'])
+
+        # Notifier le(s) autre(s) participant(s) — jamais l'expediteur lui-meme.
+        preview = (message.content or "").strip()
+        if len(preview) > 80:
+            preview = preview[:80] + "..."
+        if not preview:
+            preview = "Sent an attachment" if message.message_type != 'text' else "New message"
+
+        for participant in conversation.participants.exclude(id=request.user.id):
+            notify(
+                user=participant,
+                notification_type='system',
+                title=f"New message from {request.user.get_full_name()}",
+                body=preview,
+                data={'conversation_id': str(conversation.id)},
+            )
 
         return Response(
             success_response(
