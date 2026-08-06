@@ -85,7 +85,16 @@ class PropertyListView(APIView):
         paginator   = StandardResultsSetPagination()
         page_data   = paginator.paginate_queryset(queryset, request)
         serializer  = PropertyListSerializer(page_data, many=True, context={'request': request})
-        result      = paginator.get_paginated_response(serializer.data).data
+        items       = serializer.data
+
+        # Le client ne voit jamais le quartier precis (seulement la ville) :
+        # la recherche peut retourner des biens proches du quartier demande,
+        # donc on ne veut pas laisser penser que le bien EST dans ce quartier.
+        if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
+            for item in items:
+                item['neighborhood'] = None
+
+        result      = paginator.get_paginated_response(items).data
 
         if cache_key:
             cache.set(cache_key, result, 300)
