@@ -136,6 +136,8 @@ class PropertyDetailView(APIView):
         data = serializer.data
 
         if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
+            data['neighborhood'] = None
+
             relation = ClientAgentRelation.objects.filter(
                 client=request.user, is_active=True
             ).select_related('agent__agent_profile').first()
