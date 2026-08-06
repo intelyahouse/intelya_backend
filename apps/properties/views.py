@@ -13,6 +13,7 @@ from core.utils import success_response, error_response
 from core.pagination import StandardResultsSetPagination
 from core.throttles import SearchThrottle, UploadThrottle
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from rest_framework import generics
 
 User = get_user_model()
@@ -100,6 +101,62 @@ class PropertyListView(APIView):
             cache.set(cache_key, result, 300)
 
         return Response(result)
+
+
+class PropertyVideoAccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Properties'], summary="Acceder a la video du bien (si debloque)")
+    def get(self, request, property_id):
+        try:
+            prop = Property.objects.select_related('agent__agent_profile').get(id=property_id)
+        except Property.DoesNotExist:
+            return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        if not hasattr(prop, 'video'):
+            return Response(error_response("Aucune video pour ce bien"), status=status.HTTP_404_NOT_FOUND)
+
+        video = prop.video
+        agent_profile = getattr(prop.agent, 'agent_profile', None)
+        free_mode = getattr(settings, 'FREE_MODE', True)
+        is_free = free_mode or (agent_profile and agent_profile.visit_fee_is_free)
+
+        if request.user.role == 'admin' or prop.agent_id == request.user.id:
+            unlocked = True
+        elif request.user.role in ['client', 'tenant']:
+            if is_free:
+                unlocked = True
+            else:
+                from apps.visits.models import VisitRequest
+                unlocked = VisitRequest.objects.filter(
+                    client=request.user, visit_property=prop,
+                    payment_status__in=['paid', 'released']
+                ).exists()
+        else:
+            unlocked = False
+
+        if not unlocked:
+            from apps.visits.models import VisitRequest
+            existing_visit = VisitRequest.objects.filter(
+                client=request.user, visit_property=prop
+            ).order_by('-created_at').first()
+
+            return Response(success_response({
+                'unlocked': False,
+                'visit_fee': float(agent_profile.visit_fee) if agent_profile else 0,
+                'visit_id': str(existing_visit.id) if existing_visit else None,
+            }))
+
+        video_url = None
+        if video.video_file:
+            video_url = request.build_absolute_uri(video.video_file.url)
+        elif video.video_url:
+            video_url = video.video_url
+
+        return Response(success_response({
+            'unlocked': True,
+            'video_url': video_url,
+        }))
 
 
 class PropertyDetailView(APIView):

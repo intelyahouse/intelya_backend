@@ -9,6 +9,7 @@ from django.utils.decorators import method_decorator
 from datetime import timedelta
 from drf_spectacular.utils import extend_schema
 from .models import Transaction, Escrow
+from apps.visits.models import VisitRequest
 from .serializers import TransactionSerializer, InitiatePaymentSerializer
 from .services.kpay import kpay_service
 from .services.bank import bank_service
@@ -53,6 +54,19 @@ class InitiatePaymentView(APIView):
                 "Transaction déjà en cours"
             ), status=status.HTTP_200_OK)
 
+        receiver = None
+        txn_type = related_type
+        if related_type == 'visit':
+            txn_type = 'visit_fee'
+            try:
+                visit = VisitRequest.objects.select_related('agent').get(
+                    id=related_id, client=request.user
+                )
+            except VisitRequest.DoesNotExist:
+                return Response(error_response("Visite introuvable"), status=status.HTTP_404_NOT_FOUND)
+            receiver = visit.agent
+            amount = float(visit.visit_fee)
+
         commission_data = calculate_platform_commission(amount)
         reference = generate_transaction_reference()
 
@@ -62,7 +76,8 @@ class InitiatePaymentView(APIView):
                 txn = Transaction.objects.create(
                     reference=reference,
                     payer=request.user,
-                    transaction_type=related_type,
+                    receiver=receiver,
+                    transaction_type=txn_type,
                     amount=amount,
                     platform_fee=commission_data['platform_commission'],
                     net_amount=commission_data['owner_amount'],
@@ -157,6 +172,7 @@ class CampayWebhookView(APIView):
                     txn.escrow.save()
 
                 self._process_owner_transfer(txn)
+                self._process_visit_payment(txn)
 
             elif status_ in ['FAILED', 'CANCELLED', 'EXPIRED']:
                 txn.status = 'failed'
@@ -169,6 +185,13 @@ class CampayWebhookView(APIView):
                 txn.save(update_fields=['webhook_data'])
 
         return Response({'status': 'ok'})
+
+    def _process_visit_payment(self, txn):
+        if txn.transaction_type != 'visit_fee' or not txn.related_visit_id:
+            return
+        VisitRequest.objects.filter(id=txn.related_visit_id).update(
+            payment_status='paid', payment_reference=txn.reference
+        )
 
     def _process_owner_transfer(self, txn):
         if txn.transaction_type != 'rent' or not txn.related_lease_id:
@@ -260,6 +283,7 @@ class KPayWebhookView(APIView):
                     txn.escrow.save()
 
                 self._process_owner_transfer(txn)
+                self._process_visit_payment(txn)
 
             elif statusid == '02':
                 txn.status = 'failed'
@@ -273,6 +297,13 @@ class KPayWebhookView(APIView):
 
         # K-Pay attend cette réponse exacte
         return Response({'tid': tid, 'refid': refid, 'reply': 'OK'})
+
+    def _process_visit_payment(self, txn):
+        if txn.transaction_type != 'visit_fee' or not txn.related_visit_id:
+            return
+        VisitRequest.objects.filter(id=txn.related_visit_id).update(
+            payment_status='paid', payment_reference=txn.reference
+        )
 
     def _process_owner_transfer(self, txn):
         if txn.transaction_type != 'rent' or not txn.related_lease_id:
