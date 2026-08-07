@@ -74,17 +74,15 @@ class PropertyListView(APIView):
         if has_parking == 'true':
             strict_queryset = strict_queryset.filter(has_parking=True)
 
-        # Recherche floue : si rien ne correspond exactement (quartier introuvable
-        # ou budget trop precis), on elargit automatiquement au lieu de renvoyer une
-        # liste vide -- le client voit alors ce qui se rapproche le plus de sa demande.
+        # Recherche floue : si rien ne correspond exactement (quartier, budget OU
+        # nombre de chambres precis), on elargit automatiquement au lieu de renvoyer
+        # une liste vide -- le client voit alors ce qui se rapproche le plus.
         is_fallback = False
-        if (neighborhood or min_price or max_price) and not strict_queryset.exists():
+        if (neighborhood or min_price or max_price or bedrooms) and not strict_queryset.exists():
             is_fallback = True
             fallback_queryset = base_queryset
             if prop_type:
                 fallback_queryset = fallback_queryset.filter(property_type=prop_type)
-            if bedrooms:
-                fallback_queryset = fallback_queryset.filter(bedrooms=bedrooms)
             if is_furnished == 'true':
                 fallback_queryset = fallback_queryset.filter(is_furnished=True)
             if has_generator == 'true':
@@ -95,6 +93,12 @@ class PropertyListView(APIView):
                 fallback_queryset = fallback_queryset.filter(price__gte=float(min_price) * 0.8)
             if max_price:
                 fallback_queryset = fallback_queryset.filter(price__lte=float(max_price) * 1.2)
+            if bedrooms:
+                # +/- 1 chambre autour du nombre demande (jamais moins de 0)
+                b = int(bedrooms)
+                fallback_queryset = fallback_queryset.filter(
+                    bedrooms__gte=max(b - 1, 0), bedrooms__lte=b + 1
+                )
             queryset = fallback_queryset
         else:
             queryset = strict_queryset
