@@ -14,6 +14,8 @@ from .serializers import (
 )
 from apps.properties.models import Property
 from apps.agents.models import ClientAgentRelation
+from apps.messaging.models import Conversation, Message
+from apps.notifications.utils import notify
 from core.utils import success_response, error_response, is_within_radius
 from core.permissions import IsAgent
 from core.pagination import StandardResultsSetPagination
@@ -63,15 +65,46 @@ class RequestVisitView(APIView):
             visit_fee = agent.agent_profile.visit_fee
             is_free   = agent.agent_profile.visit_fee_is_free
 
+        client_message = serializer.validated_data.get('client_message', '').strip()
+
         with transaction.atomic():
             visit = VisitRequest.objects.create(
                 client=request.user, agent=agent,
                 visit_property=prop, visit_fee=visit_fee,
                 is_free=is_free,
-                client_message=serializer.validated_data.get('client_message', ''),
+                client_message=client_message,
                 payment_status='not_required' if is_free else 'pending'
             )
             Property.objects.filter(id=property_id).update(interested_count=prop.interested_count + 1)
+
+            conversation = Conversation.objects.filter(
+                conversation_type='client_agent', participants=request.user
+            ).filter(participants=agent).first()
+
+            if not conversation:
+                conversation = Conversation.objects.create(
+                    conversation_type='client_agent',
+                    related_property=prop,
+                )
+                conversation.participants.add(request.user, agent)
+
+            if client_message:
+                Message.objects.create(
+                    conversation=conversation,
+                    sender=request.user,
+                    message_type='text',
+                    content=client_message,
+                )
+                conversation.last_message_at = timezone.now()
+                conversation.save(update_fields=['last_message_at'])
+
+                notify(
+                    user=agent,
+                    notification_type='system',
+                    title=f"New visit request from {request.user.get_full_name()}",
+                    body=client_message[:80],
+                    data={'conversation_id': str(conversation.id), 'visit_id': str(visit.id)},
+                )
 
         return Response(
             success_response(VisitRequestSerializer(visit).data, f"Demande envoyée à {agent.get_full_name()}"),
