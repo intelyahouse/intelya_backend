@@ -49,57 +49,75 @@ class PropertyListView(APIView):
                 return Response(success_response(cached))
 
         # Requête optimisée avec select_related
-        queryset = Property.objects.filter(
+        # Requete optimisee avec select_related -- la ville reste un filtre "dur" (jamais elargi).
+        base_queryset = Property.objects.filter(
             status='available'
         ).select_related('agent', 'owner').prefetch_related('photos', 'likes')
-
         if city:
-            queryset = queryset.filter(city__icontains=city)
+            base_queryset = base_queryset.filter(city__icontains=city)
+
+        strict_queryset = base_queryset
         if neighborhood:
-            queryset = queryset.filter(neighborhood__icontains=neighborhood)
+            strict_queryset = strict_queryset.filter(neighborhood__icontains=neighborhood)
         if prop_type:
-            queryset = queryset.filter(property_type=prop_type)
+            strict_queryset = strict_queryset.filter(property_type=prop_type)
         if min_price:
-            queryset = queryset.filter(price__gte=min_price)
+            strict_queryset = strict_queryset.filter(price__gte=min_price)
         if max_price:
-            queryset = queryset.filter(price__lte=max_price)
+            strict_queryset = strict_queryset.filter(price__lte=max_price)
         if bedrooms:
-            queryset = queryset.filter(bedrooms=bedrooms)
+            strict_queryset = strict_queryset.filter(bedrooms=bedrooms)
         if is_furnished == 'true':
-            queryset = queryset.filter(is_furnished=True)
+            strict_queryset = strict_queryset.filter(is_furnished=True)
         if has_generator == 'true':
-            queryset = queryset.filter(has_generator=True)
+            strict_queryset = strict_queryset.filter(has_generator=True)
         if has_parking == 'true':
-            queryset = queryset.filter(has_parking=True)
+            strict_queryset = strict_queryset.filter(has_parking=True)
 
-        # Une fois un agent choisi, le client ne parcourt QUE le portefeuille
-        # de son agent (protection anti-vol de clients entre agents).
-        if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
-            relation = ClientAgentRelation.objects.filter(
-                client=request.user, is_active=True
-            ).select_related('agent').first()
+        # Recherche floue : si rien ne correspond exactement (quartier introuvable
+        # ou budget trop precis), on elargit automatiquement au lieu de renvoyer une
+        # liste vide -- le client voit alors ce qui se rapproche le plus de sa demande.
+        is_fallback = False
+        if (neighborhood or min_price or max_price) and not strict_queryset.exists():
+            is_fallback = True
+            fallback_queryset = base_queryset
+            if prop_type:
+                fallback_queryset = fallback_queryset.filter(property_type=prop_type)
+            if bedrooms:
+                fallback_queryset = fallback_queryset.filter(bedrooms=bedrooms)
+            if is_furnished == 'true':
+                fallback_queryset = fallback_queryset.filter(is_furnished=True)
+            if has_generator == 'true':
+                fallback_queryset = fallback_queryset.filter(has_generator=True)
+            if has_parking == 'true':
+                fallback_queryset = fallback_queryset.filter(has_parking=True)
+            if min_price:
+                fallback_queryset = fallback_queryset.filter(price__gte=float(min_price) * 0.8)
+            if max_price:
+                fallback_queryset = fallback_queryset.filter(price__lte=float(max_price) * 1.2)
+            queryset = fallback_queryset
+        else:
+            queryset = strict_queryset
 
-            if relation:
-                queryset = queryset.filter(agent=relation.agent)
+        # Le client voit TOUJOURS toutes les maisons de la plateforme, quel que soit
+        # l'agent qui les a publiees. L'exclusivite ne joue qu'au moment de contacter
+        # l'agent, jamais sur la recherche.
 
         # Pagination
         paginator   = StandardResultsSetPagination()
         page_data   = paginator.paginate_queryset(queryset, request)
         serializer  = PropertyListSerializer(page_data, many=True, context={'request': request})
         items       = serializer.data
-
-        # Le client ne voit jamais le quartier precis (seulement la ville) :
-        # la recherche peut retourner des biens proches du quartier demande,
-        # donc on ne veut pas laisser penser que le bien EST dans ce quartier.
+        # Le client ne voit jamais le quartier precis (seulement la ville) : la recherche
+        # peut retourner des biens proches du quartier demande, donc on ne veut pas
+        # laisser penser que le bien EST dans ce quartier.
         if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
             for item in items:
                 item['neighborhood'] = None
-
         result      = paginator.get_paginated_response(items).data
-
+        result['is_fallback'] = is_fallback
         if cache_key:
             cache.set(cache_key, result, 300)
-
         return Response(result)
 
 
