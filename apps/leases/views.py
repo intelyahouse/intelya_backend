@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from .models import RentPayment, DebtRecord, Complaint
 from .serializers import (
@@ -27,7 +28,8 @@ class MyRentPaymentsView(APIView):
         if request.user.role in ['client', 'tenant']:
             payments = RentPayment.objects.filter(tenant=request.user).select_related('lease__rental_property')
         elif request.user.role == 'agent':
-            payments = RentPayment.objects.filter(lease__agent=request.user).select_related('tenant', 'lease__rental_property')
+            agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+            payments = RentPayment.objects.filter(lease__agency_id=agency_id).select_related('tenant', 'lease__rental_property')
         elif request.user.role == 'owner':
             payments = RentPayment.objects.filter(lease__owner=request.user).select_related('tenant', 'lease__rental_property')
         else:
@@ -48,12 +50,13 @@ class ConfirmCashPaymentView(APIView):
         if not serializer.is_valid():
             return Response(error_response("Données invalides", serializer.errors), status=status.HTTP_400_BAD_REQUEST)
 
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         try:
             payment = RentPayment.objects.select_related(
                 'tenant', 'lease__owner__owner_profile'
             ).get(
                 id=serializer.validated_data['rent_payment_id'],
-                lease__agent=request.user,
+                lease__agency_id=agency_id,
                 status='pending'
             )
         except RentPayment.DoesNotExist:
@@ -79,11 +82,12 @@ class DebtManagementView(APIView):
 
     @extend_schema(tags=['Leases'], summary="Gérer une dette (agent)", request=DebtActionSerializer)
     def post(self, request, payment_id):
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         try:
             payment = RentPayment.objects.select_related(
                 'tenant', 'lease'
             ).get(
-                id=payment_id, lease__agent=request.user,
+                id=payment_id, lease__agency_id=agency_id,
                 status__in=['pending', 'late']
             )
         except RentPayment.DoesNotExist:
@@ -133,7 +137,7 @@ class SubmitComplaintView(APIView):
 
         lease = LeaseContract.objects.filter(
             tenant=request.user, status='active'
-        ).select_related('owner', 'agent').first()
+        ).select_related('owner', 'agent', 'agency').first()
 
         if not lease:
             return Response(error_response("Aucun bail actif trouvé"), status=status.HTTP_404_NOT_FOUND)
@@ -144,7 +148,7 @@ class SubmitComplaintView(APIView):
 
         assigned_to = lease.owner if (lease.owner.is_validated and lease.owner.role == 'owner') else lease.agent
 
-        complaint = serializer.save(lease=lease, tenant=request.user, assigned_to=assigned_to)
+        complaint = serializer.save(lease=lease, tenant=request.user, assigned_to=assigned_to, agency=lease.agency)
 
         from apps.notifications.utils import notify_complaint_new
         notify_complaint_new(assigned_to, request.user.get_full_name(), complaint.category)
@@ -162,6 +166,11 @@ class MyComplaintsView(APIView):
     def get(self, request):
         if request.user.role in ['client', 'tenant']:
             complaints = Complaint.objects.filter(tenant=request.user).select_related('assigned_to', 'lease__rental_property')
+        elif request.user.role == 'agent':
+            agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+            complaints = Complaint.objects.filter(
+                Q(assigned_to=request.user) | Q(agency_id=agency_id)
+            ).select_related('tenant', 'lease__rental_property')
         else:
             complaints = Complaint.objects.filter(assigned_to=request.user).select_related('tenant', 'lease__rental_property')
 
@@ -177,10 +186,19 @@ class ResolveComplaintView(APIView):
     @extend_schema(tags=['Leases'], summary="Résoudre une plainte")
     def post(self, request, complaint_id):
         try:
-            complaint = Complaint.objects.select_related('tenant').get(
-                id=complaint_id, assigned_to=request.user
-            )
-        except Complaint.DoesNotExist:
+            complaint = Complaint.objects.select_related('tenant', 'assigned_to').get(id=complaint_id)
+        except (Complaint.DoesNotExist, ValueError):
+            return Response(error_response("Plainte introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        # Autorise le destinataire exact, ou -- si la plainte a ete confiee a
+        # un agent (pas au proprietaire) -- n'importe quel agent de la meme
+        # agence, coherent avec le principe agence-large des autres phases.
+        can_resolve = complaint.assigned_to_id == request.user.id
+        if not can_resolve and request.user.role == 'agent' and complaint.assigned_to and complaint.assigned_to.role == 'agent':
+            agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+            can_resolve = agency_id is not None and agency_id == complaint.agency_id
+
+        if not can_resolve:
             return Response(error_response("Plainte introuvable"), status=status.HTTP_404_NOT_FOUND)
 
         resolution = request.data.get('resolution_note', '').strip()

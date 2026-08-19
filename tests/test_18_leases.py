@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from rest_framework import status
 from unittest.mock import patch
 from apps.contracts.models import LeaseContract
+from apps.agents.models import AgentProfile
 from apps.leases.models import RentPayment, Complaint
 
 pytestmark = pytest.mark.django_db
@@ -17,6 +18,7 @@ def bail_actif(agent_user, owner_user, client_with_agent, property_obj):
         tenant=client_with_agent,
         owner=owner_user,
         agent=agent_user,
+        agency=AgentProfile.objects.get(user=agent_user).agency,
         rental_property=property_obj,
         monthly_rent=150000,
         deposit_amount=300000,

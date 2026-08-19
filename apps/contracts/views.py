@@ -47,8 +47,9 @@ class CreateLeaseView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        agency = getattr(getattr(request.user, 'agent_profile', None), 'agency', None)
         lease = serializer.save(
-            agent=request.user,
+            agent=request.user, agency=agency,
             platform_fee_percent=settings.PLATFORM_COMMISSION_PERCENT
         )
 
@@ -112,7 +113,8 @@ class MyLeasesView(APIView):
         if user.role in ['client', 'tenant']:
             leases = LeaseContract.objects.filter(tenant=user)
         elif user.role == 'agent':
-            leases = LeaseContract.objects.filter(agent=user)
+            agency_id = getattr(getattr(user, 'agent_profile', None), 'agency_id', None)
+            leases = LeaseContract.objects.filter(agency_id=agency_id)
         elif user.role == 'owner':
             leases = LeaseContract.objects.filter(owner=user)
         else:

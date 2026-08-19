@@ -116,6 +116,7 @@ class Complaint(models.Model):
     lease           = models.ForeignKey(LeaseContract, on_delete=models.CASCADE, related_name="complaints")
     tenant          = models.ForeignKey(User, on_delete=models.CASCADE, related_name="complaints_filed")
     assigned_to     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="complaints_assigned")
+    agency          = models.ForeignKey("agencies.Agency", on_delete=models.SET_NULL, null=True, blank=True, related_name="complaints")
     category        = models.CharField(max_length=20, choices=CATEGORY_CHOICES, db_index=True)
     title           = models.CharField(max_length=200)
     description     = models.TextField()
@@ -132,6 +133,7 @@ class Complaint(models.Model):
             models.Index(fields=["lease", "status"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["assigned_to", "status"]),
+            models.Index(fields=["agency", "status"]),
             models.Index(fields=["status", "created_at"]),
         ]
 

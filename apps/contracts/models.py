@@ -55,6 +55,7 @@ class LeaseContract(models.Model):
     tenant                 = models.ForeignKey(User, on_delete=models.CASCADE, related_name="lease_contracts", limit_choices_to={"role__in": ["client", "tenant"]})
     owner                  = models.ForeignKey(User, on_delete=models.CASCADE, related_name="landlord_contracts", limit_choices_to={"role": "owner"})
     agent                  = models.ForeignKey(User, on_delete=models.CASCADE, related_name="managed_contracts", limit_choices_to={"role": "agent"}, null=True, blank=True)
+    agency                 = models.ForeignKey("agencies.Agency", on_delete=models.PROTECT, related_name="lease_contracts", null=True, blank=True)
     rental_property        = models.ForeignKey("properties.Property", on_delete=models.CASCADE, related_name="lease_contracts")
     status                 = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft", db_index=True)
     monthly_rent           = models.DecimalField(max_digits=12, decimal_places=2)
@@ -83,6 +84,7 @@ class LeaseContract(models.Model):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["owner", "status"]),
             models.Index(fields=["agent", "status"]),
+            models.Index(fields=["agency", "status"]),
             models.Index(fields=["status", "end_date"]),
             models.Index(fields=["renewal_notified", "end_date"]),
             models.Index(fields=["rental_property", "status"]),
