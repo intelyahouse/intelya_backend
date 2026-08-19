@@ -33,6 +33,45 @@ class TestAgencyMe:
         assert data['member_count'] == 1
 
 
+class TestAgencyNameSyncSecurity:
+    """Seul le gerant peut renommer l'agence via agency_name — voir securite,
+    non-gerant ne doit jamais pouvoir ecraser le nom de l'agence partagee."""
+
+    def test_gerant_agency_name_still_syncs(self, auth_agent, agent_user):
+        response = auth_agent.patch('/api/v1/agents/me/', {'agency_name': 'Agence du Gerant'})
+        assert response.status_code == status.HTTP_200_OK
+
+        agency = AgentProfile.objects.get(user=agent_user).agency
+        assert agency.name == 'Agence du Gerant'
+
+    def test_non_gerant_member_cannot_rename_agency_via_save(
+        self, auth_agent, auth_agent2, agent_user, second_agent
+    ):
+        from apps.agencies.services import transfer_agent_to_agency
+
+        # second_agent definit son propre agency_name AVANT de rejoindre (legitime, self-service)
+        second_profile = AgentProfile.objects.get(user=second_agent)
+        second_profile.agency_name = "Cabinet De Second Agent"
+        second_profile.save()
+
+        gerant_agency = AgentProfile.objects.get(user=agent_user).agency
+        original_name = gerant_agency.name
+
+        # second_agent rejoint l'agence du gerant
+        transfer_agent_to_agency(AgentProfile.objects.get(user=second_agent), gerant_agency)
+
+        gerant_agency.refresh_from_db()
+        assert gerant_agency.name == original_name
+
+        # meme un save() ulterieur du profil non-gerant ne doit rien changer
+        joined_profile = AgentProfile.objects.get(user=second_agent)
+        joined_profile.bio = "mise a jour anodine"
+        joined_profile.save()
+
+        gerant_agency.refresh_from_db()
+        assert gerant_agency.name == original_name
+
+
 class TestAgencyInvite:
 
     def test_gerant_can_invite_solo_agent(self, auth_agent, agent_user, second_agent):

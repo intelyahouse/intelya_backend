@@ -70,9 +70,17 @@ class AgentProfile(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # TODO Phase 2 : quand une agence a plusieurs agents, un agent qui edite
-        # son agency_name ne doit plus pouvoir renommer l'agence partagee.
-        if self.agency_id and self.agency.is_solo and self.agency_name and self.agency.name != self.agency_name:
+        # Seul le gerant (owner_agent) peut renommer l'agence via son propre
+        # agency_name. Sans cette garde, sauvegarder le profil d'un agent
+        # non-gerant (ex: rejoindre l'agence, ou simplement modifier son bio)
+        # pourrait silencieusement ecraser le nom de l'agence partagee avec
+        # la valeur laissee dans son propre champ agency_name.
+        if (
+            self.agency_id
+            and self.user_id == self.agency.owner_agent_id
+            and self.agency_name
+            and self.agency.name != self.agency_name
+        ):
             from apps.agencies.models import Agency
             Agency.objects.filter(pk=self.agency_id).update(name=self.agency_name)
 
