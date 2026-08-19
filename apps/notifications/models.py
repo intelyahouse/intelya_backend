@@ -23,6 +23,10 @@ class Notification(models.Model):
         ("account_validated", "Compte valide"),
         ("payment_success",   "Paiement reussi"),
         ("payment_failed",    "Paiement echoue"),
+        ("agency_invitation",          "Invitation agence"),
+        ("agency_invitation_accepted", "Invitation acceptee"),
+        ("agency_invitation_declined", "Invitation refusee"),
+        ("agency_member_removed",      "Retire de l'agence"),
         ("system",            "Systeme"),
     ]
 

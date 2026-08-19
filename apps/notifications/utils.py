@@ -92,6 +92,42 @@ def notify_complaint_new(assigned_to, tenant_name, category):
     )
 
 
+def notify_agency_invitation(invited_user, agency_name, inviter_name):
+    notify(
+        user=invited_user,
+        notification_type='agency_invitation',
+        title="Invitation a rejoindre une agence",
+        body=f"{inviter_name} vous invite a rejoindre l'agence {agency_name}",
+    )
+
+
+def notify_agency_invitation_accepted(inviter, agent_name):
+    notify(
+        user=inviter,
+        notification_type='agency_invitation_accepted',
+        title="Invitation acceptee",
+        body=f"{agent_name} a rejoint votre agence",
+    )
+
+
+def notify_agency_invitation_declined(inviter, agent_name):
+    notify(
+        user=inviter,
+        notification_type='agency_invitation_declined',
+        title="Invitation refusee",
+        body=f"{agent_name} a decline votre invitation",
+    )
+
+
+def notify_agency_member_removed(user, agency_name):
+    notify(
+        user=user,
+        notification_type='agency_member_removed',
+        title="Retire de l'agence",
+        body=f"Vous avez ete retire de l'agence {agency_name}",
+    )
+
+
 def notify_bulk(users, notification_type, title, body, data=None):
     """
     Envoie une notification a plusieurs utilisateurs en UNE seule requete SQL.
