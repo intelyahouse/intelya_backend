@@ -53,6 +53,7 @@ LOCAL_APPS = [
     'apps.disputes',
     'apps.boost',
     'apps.referrals',
+    'apps.network',
     'core',
 ]
 

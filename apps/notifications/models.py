@@ -28,6 +28,10 @@ class Notification(models.Model):
         ("agency_invitation_declined", "Invitation refusee"),
         ("agency_member_removed",      "Retire de l'agence"),
         ("mandate_reassigned",         "Mandat reaffecte"),
+        ("collaboration_proposed",     "Collaboration proposee"),
+        ("collaboration_countered",    "Contre-proposition collaboration"),
+        ("collaboration_accepted",     "Collaboration acceptee"),
+        ("collaboration_rejected",     "Collaboration refusee"),
         ("system",            "Systeme"),
     ]
 

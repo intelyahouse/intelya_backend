@@ -29,6 +29,9 @@ api_v1_patterns = [
     # Agences
     path('agencies/', include('apps.agencies.urls')),
 
+    # Network inter-agences
+    path('network/', include('apps.network.urls')),
+
     # Propriétaires
     path('owners/', include('apps.owners.urls')),
 

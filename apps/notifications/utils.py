@@ -137,6 +137,40 @@ def notify_mandate_reassigned(new_agent, owner_name):
     )
 
 
+def notify_collaboration_proposed(agents, property_title, from_agency_name):
+    notify_bulk(
+        agents, 'collaboration_proposed',
+        "Nouvelle proposition de collaboration",
+        f"{from_agency_name} propose une collaboration sur : {property_title}",
+    )
+
+
+def notify_collaboration_countered(agents, property_title, from_agency_name):
+    notify_bulk(
+        agents, 'collaboration_countered',
+        "Contre-proposition de collaboration",
+        f"{from_agency_name} a fait une contre-proposition sur : {property_title}",
+    )
+
+
+def notify_collaboration_accepted(user, property_title, agency_name):
+    notify(
+        user=user,
+        notification_type='collaboration_accepted',
+        title="Collaboration acceptee",
+        body=f"{agency_name} a accepte la collaboration sur : {property_title}",
+    )
+
+
+def notify_collaboration_rejected(user, property_title, agency_name):
+    notify(
+        user=user,
+        notification_type='collaboration_rejected',
+        title="Collaboration refusee",
+        body=f"{agency_name} a refuse la collaboration sur : {property_title}",
+    )
+
+
 def notify_bulk(users, notification_type, title, body, data=None):
     """
     Envoie une notification a plusieurs utilisateurs en UNE seule requete SQL.
