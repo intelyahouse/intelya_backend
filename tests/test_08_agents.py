@@ -40,12 +40,15 @@ class TestAgentProfile:
         response = auth_client.get('/api/v1/agents/me/')
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_update_agent_profile(self, auth_agent):
+    def test_update_agent_profile(self, auth_agent, agent_user):
         response = auth_agent.patch('/api/v1/agents/me/', {
             'agency_name': 'Agence INTELYA Test',
             'bio': 'Agent professionnel avec 5 ans d expérience',
         })
         assert response.status_code == status.HTTP_200_OK
+        profile = AgentProfile.objects.get(user=agent_user)
+        assert profile.agency_name == 'Agence INTELYA Test'
+        assert profile.agency.name == 'Agence INTELYA Test'
 
 
 class TestChooseAgent:
@@ -65,7 +68,8 @@ class TestChooseAgent:
             email='agent2@test.com', phone='+237670000050',
             role='agent', is_validated=True,
         )
-        AgentProfile.objects.create(user=agent2, working_city='Yaoundé')
+        from apps.agents.services import ensure_agent_profile_and_agency
+        ensure_agent_profile_and_agency(agent2, working_city_default='Yaoundé')
         profile1 = AgentProfile.objects.get(user=agent_user)
         profile2 = AgentProfile.objects.get(user=agent2)
         auth_client.post('/api/v1/agents/choose/', {'agent_id': str(profile1.id)})

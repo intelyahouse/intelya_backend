@@ -109,11 +109,8 @@ class AdminValidateUserView(APIView):
 
             # Créer le profil selon le rôle
             if user.role == 'agent':
-                from apps.agents.models import AgentProfile
-                AgentProfile.objects.get_or_create(
-                    user=user,
-                    defaults={'working_city': 'Non définie'}
-                )
+                from apps.agents.services import ensure_agent_profile_and_agency
+                ensure_agent_profile_and_agency(user)
             elif user.role == 'owner':
                 from apps.owners.models import OwnerProfile
                 OwnerProfile.objects.get_or_create(user=user)

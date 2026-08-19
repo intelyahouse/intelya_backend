@@ -16,11 +16,8 @@ def ensure_role_profile_exists(sender, instance, **kwargs):
         return
 
     if instance.role == 'agent':
-        from apps.agents.models import AgentProfile
-        AgentProfile.objects.get_or_create(
-            user=instance,
-            defaults={'working_city': 'Non définie'}
-        )
+        from apps.agents.services import ensure_agent_profile_and_agency
+        ensure_agent_profile_and_agency(instance)
     elif instance.role == 'owner':
         from apps.owners.models import OwnerProfile
         OwnerProfile.objects.get_or_create(user=instance)

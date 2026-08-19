@@ -16,6 +16,10 @@ class AgentProfile(models.Model):
     id                  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user                = models.OneToOneField(User, on_delete=models.CASCADE, related_name="agent_profile")
     agency_name         = models.CharField(max_length=200, null=True, blank=True)
+    agency              = models.ForeignKey(
+        "agencies.Agency", on_delete=models.PROTECT,
+        related_name="agents",
+    )
     bio                 = models.TextField(null=True, blank=True)
     certification_level = models.CharField(max_length=20, choices=CERTIFICATION_CHOICES, default="basic", db_index=True)
 
@@ -63,6 +67,14 @@ class AgentProfile(models.Model):
 
     def __str__(self):
         return f"Agent: {self.user.get_full_name()} ({self.certification_level})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # TODO Phase 2 : quand une agence a plusieurs agents, un agent qui edite
+        # son agency_name ne doit plus pouvoir renommer l'agence partagee.
+        if self.agency_id and self.agency.is_solo and self.agency_name and self.agency.name != self.agency_name:
+            from apps.agencies.models import Agency
+            Agency.objects.filter(pk=self.agency_id).update(name=self.agency_name)
 
     def update_reliability_score(self):
         from apps.reviews.models import Review

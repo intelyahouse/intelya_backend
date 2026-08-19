@@ -10,12 +10,13 @@ class AgentProfileSerializer(serializers.ModelSerializer):
     email       = serializers.CharField(source='user.email', read_only=True)
     phone       = serializers.CharField(source='user.phone', read_only=True)
     profile_photo = serializers.ImageField(source='user.profile_photo', read_only=True)
+    agency      = serializers.SerializerMethodField()
 
     class Meta:
         model  = AgentProfile
         fields = [
             'id', 'full_name', 'email', 'phone', 'profile_photo',
-            'agency_name', 'bio', 'certification_level',
+            'agency_name', 'agency', 'bio', 'certification_level',
             'working_city', 'working_zones',
             'commission_type', 'commission_value',
             'visit_fee', 'visit_fee_is_free',
@@ -32,22 +33,29 @@ class AgentProfileSerializer(serializers.ModelSerializer):
             'certification_level'
         ]
 
+    def get_agency(self, obj):
+        return {"id": str(obj.agency_id), "name": obj.agency.name} if obj.agency_id else None
+
 
 class PublicAgentSerializer(serializers.ModelSerializer):
     """Vue publique de l'agent — pour les clients et propriétaires sans agent"""
     full_name     = serializers.CharField(source='user.get_full_name', read_only=True)
     profile_photo = serializers.SerializerMethodField()
     has_active_boost = serializers.SerializerMethodField()
+    agency        = serializers.SerializerMethodField()
 
     class Meta:
         model  = AgentProfile
         fields = [
             'id', 'full_name', 'profile_photo',
-            'agency_name', 'bio', 'certification_level',
+            'agency_name', 'agency', 'bio', 'certification_level',
             'working_city', 'reliability_score', 'total_reviews',
             'visit_fee_is_free', 'visit_fee',
             'total_transactions', 'has_active_boost'
         ]
+
+    def get_agency(self, obj):
+        return {"id": str(obj.agency_id), "name": obj.agency.name} if obj.agency_id else None
 
     def get_profile_photo(self, obj):
         photo = obj.user.profile_photo

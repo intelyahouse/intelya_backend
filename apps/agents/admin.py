@@ -4,10 +4,11 @@ from .models import AgentProfile, ClientAgentRelation, OwnerAgentRelation, Agent
 
 @admin.register(AgentProfile)
 class AgentProfileAdmin(admin.ModelAdmin):
-    list_display  = ['user', 'agency_name', 'certification_level', 'reliability_score', 'working_city', 'total_clients']
+    list_display  = ['user', 'agency_name', 'agency', 'certification_level', 'reliability_score', 'working_city', 'total_clients']
     list_filter   = ['certification_level', 'working_city']
     search_fields = ['user__email', 'user__first_name', 'agency_name']
     readonly_fields = ['reliability_score', 'total_reviews', 'total_transactions']
+    list_select_related = ['agency']
 
     actions = ['upgrade_to_certified', 'upgrade_to_premium']
 
