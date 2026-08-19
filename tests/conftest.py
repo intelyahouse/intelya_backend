@@ -136,7 +136,7 @@ def admin_user(create_user):
 @pytest.fixture
 def property_obj(owner_user, agent_user):
     from apps.properties.models import Property
-    from apps.agents.models import OwnerAgentRelation
+    from apps.agents.models import OwnerAgentRelation, AgentProfile
     import datetime
 
     OwnerAgentRelation.objects.get_or_create(
@@ -145,6 +145,7 @@ def property_obj(owner_user, agent_user):
         defaults={
             "status": "active",
             "contract_start": datetime.date.today(),
+            "agency": AgentProfile.objects.get(user=agent_user).agency,
         }
     )
     return Property.objects.create(

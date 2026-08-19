@@ -128,6 +128,15 @@ def notify_agency_member_removed(user, agency_name):
     )
 
 
+def notify_mandate_reassigned(new_agent, owner_name):
+    notify(
+        user=new_agent,
+        notification_type='mandate_reassigned',
+        title="Nouveau dossier proprietaire",
+        body=f"Le dossier de {owner_name} vous a ete confie",
+    )
+
+
 def notify_bulk(users, notification_type, title, body, data=None):
     """
     Envoie une notification a plusieurs utilisateurs en UNE seule requete SQL.

@@ -295,18 +295,19 @@ class ChooseAgentView(APIView):
         return Response(error_response("Action non autorisée"), status=status.HTTP_400_BAD_REQUEST)
 
 class AgentOwnersView(APIView):
-    """Liste des proprietaires lies a l'agent"""
+    """Liste des proprietaires geres par l'agence de l'agent (mandats actifs)"""
     permission_classes = [IsAuthenticated, IsAgent]
 
-    @extend_schema(tags=['Agents'], summary="Mes proprietaires")
+    @extend_schema(tags=['Agents'], summary="Proprietaires geres par mon agence")
     def get(self, request):
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         relations = OwnerAgentRelation.objects.filter(
-            agent=request.user, status="active"
-        ).select_related('owner')
+            agency_id=agency_id, status="active"
+        ).select_related('owner', 'agent')
 
-        # Nombre de biens gérés par cet agent, par propriétaire (1 seule requête)
+        # Nombre de biens geres par l'agence, par proprietaire (1 seule requete)
         counts = dict(
-            Property.objects.filter(agent=request.user)
+            Property.objects.filter(agent__agent_profile__agency_id=agency_id)
             .values_list('owner_id')
             .annotate(count=Count('id'))
         )
@@ -317,6 +318,8 @@ class AgentOwnersView(APIView):
             'email': r.owner.email,
             'phone': r.owner.phone,
             'since': r.contract_start,
+            'assigned_agent_id': str(r.agent.id),
+            'assigned_agent_name': r.agent.get_full_name(),
             'properties_count': counts.get(r.owner.id, 0),
         } for r in relations]
         return Response(success_response(owners))

@@ -81,11 +81,14 @@ class TestListeBiens:
 class TestCreationBien:
 
     def test_agent_cree_bien(self, auth_agent, agent_user, owner_user):
-        from apps.agents.models import OwnerAgentRelation
+        from apps.agents.models import OwnerAgentRelation, AgentProfile
         import datetime
         OwnerAgentRelation.objects.get_or_create(
             owner=owner_user, agent=agent_user,
-            defaults={'status': 'active', 'contract_start': datetime.date.today()}
+            defaults={
+                'status': 'active', 'contract_start': datetime.date.today(),
+                'agency': AgentProfile.objects.get(user=agent_user).agency,
+            }
         )
         r = auth_agent.post('/api/v1/properties/create/', {
             'owner_id': str(owner_user.id),

@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     AgencyMeView, AgencyInviteView, AgencyInvitationCancelView,
     MyAgencyInvitationsView, RespondAgencyInvitationView,
-    AgencyMemberRemoveView, AgencyLeaveView,
+    AgencyMemberRemoveView, AgencyLeaveView, MandateReassignView,
 )
 
 urlpatterns = [
@@ -13,4 +13,5 @@ urlpatterns = [
     path('me/leave/', AgencyLeaveView.as_view(), name='agency-leave'),
     path('invitations/received/', MyAgencyInvitationsView.as_view(), name='agency-invitations-received'),
     path('invitations/<uuid:invitation_id>/respond/', RespondAgencyInvitationView.as_view(), name='agency-invitation-respond'),
+    path('mandates/<uuid:relation_id>/reassign/', MandateReassignView.as_view(), name='mandate-reassign'),
 ]

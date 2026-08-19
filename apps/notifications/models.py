@@ -27,6 +27,7 @@ class Notification(models.Model):
         ("agency_invitation_accepted", "Invitation acceptee"),
         ("agency_invitation_declined", "Invitation refusee"),
         ("agency_member_removed",      "Retire de l'agence"),
+        ("mandate_reassigned",         "Mandat reaffecte"),
         ("system",            "Systeme"),
     ]
 

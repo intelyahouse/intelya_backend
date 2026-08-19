@@ -79,7 +79,7 @@ class OwnerAgentRelationView(APIView):
     def get(self, request):
         relation = OwnerAgentRelation.objects.filter(
             owner=request.user, status='active'
-        ).select_related('agent').first()
+        ).select_related('agent', 'agency').first()
 
         if not relation:
             return Response(success_response(
@@ -92,6 +92,8 @@ class OwnerAgentRelationView(APIView):
             'agent_id': str(relation.agent.id),
             'agent_name': relation.agent.get_full_name(),
             'agent_phone': relation.agent.phone,
+            'agency_id': str(relation.agency_id),
+            'agency_name': relation.agency.name,
             'contract_start': relation.contract_start,
             'contract_end': relation.contract_end,
             'status': relation.status,
@@ -120,14 +122,15 @@ class OwnerAgentRelationView(APIView):
         relation = OwnerAgentRelation.objects.create(
             owner=request.user,
             agent=agent_profile.user,
+            agency=agent_profile.agency,
             status='active',
             contract_start=timezone.now().date(),
             contract_end=contract_end if contract_end else None,
         )
 
         return Response(success_response(
-            {'relation_id': str(relation.id)},
-            f"Vous êtes maintenant lié à l'agent {agent_profile.user.get_full_name()}"
+            {'relation_id': str(relation.id), 'agency_id': str(agent_profile.agency_id)},
+            f"Vous êtes maintenant lié à l'agent {agent_profile.user.get_full_name()} ({agent_profile.agency.name})"
         ), status=status.HTTP_201_CREATED)
 
     @extend_schema(tags=['Owners'], summary="Résilier le contrat avec mon agent")

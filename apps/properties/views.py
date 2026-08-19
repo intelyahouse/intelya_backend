@@ -256,7 +256,8 @@ class CreatePropertyView(APIView):
             except User.DoesNotExist:
                 return Response(error_response("Propriétaire introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-            if not OwnerAgentRelation.objects.filter(agent=request.user, owner=owner, status='active').exists():
+            agent_agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+            if not OwnerAgentRelation.objects.filter(agency_id=agent_agency_id, owner=owner, status='active').exists():
                 return Response(error_response("Ce propriétaire n'est pas lié à votre agence"), status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreatePropertySerializer(data=request.data)

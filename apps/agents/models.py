@@ -115,6 +115,9 @@ class OwnerAgentRelation(models.Model):
     id                 = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner              = models.ForeignKey(User, on_delete=models.CASCADE, related_name="agent_relations", limit_choices_to={"role": "owner"})
     agent              = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owner_relations", limit_choices_to={"role": "agent"})
+    agency             = models.ForeignKey(
+        "agencies.Agency", on_delete=models.PROTECT, related_name="mandates",
+    )
     status             = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
     contract_start     = models.DateField()
     contract_end       = models.DateField(null=True, blank=True)
