@@ -285,13 +285,20 @@ class CreatePropertyView(APIView):
 class UpdatePropertyView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _can_manage(self, request, prop):
+        if request.user.role == 'admin' or prop.agent_id == request.user.id:
+            return True
+        viewer_agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+        prop_agency_id = getattr(getattr(prop.agent, 'agent_profile', None), 'agency_id', None)
+        return viewer_agency_id is not None and viewer_agency_id == prop_agency_id
+
     def patch(self, request, property_id):
         try:
-            prop = Property.objects.get(id=property_id)
+            prop = Property.objects.select_related('agent').get(id=property_id)
         except Property.DoesNotExist:
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role != 'admin' and prop.agent != request.user:
+        if not self._can_manage(request, prop):
             return Response(error_response("Non autorisé"), status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreatePropertySerializer(prop, data=request.data, partial=True)
@@ -304,11 +311,11 @@ class UpdatePropertyView(APIView):
 
     def delete(self, request, property_id):
         try:
-            prop = Property.objects.get(id=property_id)
+            prop = Property.objects.select_related('agent').get(id=property_id)
         except Property.DoesNotExist:
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role != 'admin' and prop.agent != request.user:
+        if not self._can_manage(request, prop):
             return Response(error_response("Non autorisé"), status=status.HTTP_403_FORBIDDEN)
 
         prop.status = 'suspended'
@@ -364,8 +371,9 @@ class AgentPropertiesView(APIView):
     permission_classes = [IsAuthenticated, IsAgent]
 
     def get(self, request):
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         properties = Property.objects.filter(
-            agent=request.user
+            agent__agent_profile__agency_id=agency_id
         )
 
         owner_id = request.query_params.get('owner_id')
@@ -402,8 +410,13 @@ class UploadPropertyPhotosView(APIView):
     def post(self, request, property_id):
         from core.validators import validate_image_file
         try:
-            prop = Property.objects.get(id=property_id, agent=request.user)
+            prop = Property.objects.select_related('agent').get(id=property_id)
         except Property.DoesNotExist:
+            return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+        prop_agency_id = getattr(getattr(prop.agent, 'agent_profile', None), 'agency_id', None)
+        if prop.agent_id != request.user.id and (agency_id is None or agency_id != prop_agency_id):
             return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
 
         photos = request.FILES.getlist('photos')

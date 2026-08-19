@@ -129,6 +129,101 @@ class TestAgencyWideAccess:
         assert str(owner_user.id) in owner_ids
 
 
+class TestAgencyWidePropertyManagement:
+
+    def test_colleague_can_edit_property_published_by_agent(
+        self, auth_agent2, agent_user, second_agent, property_obj
+    ):
+        _join_agency(agent_user, second_agent)
+        second_agent.refresh_from_db()
+        auth_agent2.force_authenticate(user=second_agent)
+
+        response = auth_agent2.patch(f'/api/v1/properties/{property_obj.id}/update/', {
+            'price': 175000,
+        })
+        assert response.status_code == status.HTTP_200_OK
+        property_obj.refresh_from_db()
+        assert int(property_obj.price) == 175000
+
+    def test_outsider_cannot_edit_property(self, auth_agent2, second_agent, property_obj):
+        # second_agent garde sa propre agence solo
+        response = auth_agent2.patch(f'/api/v1/properties/{property_obj.id}/update/', {
+            'price': 999999,
+        })
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def _fake_photo(self):
+        import io
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        buf = io.BytesIO()
+        Image.new('RGB', (100, 100)).save(buf, format='JPEG')
+        buf.seek(0)
+        return SimpleUploadedFile('photo.jpg', buf.read(), content_type='image/jpeg')
+
+    def test_colleague_can_upload_photos(self, auth_agent2, agent_user, second_agent, property_obj):
+        _join_agency(agent_user, second_agent)
+        second_agent.refresh_from_db()
+        auth_agent2.force_authenticate(user=second_agent)
+
+        response = auth_agent2.post(
+            f'/api/v1/properties/{property_obj.id}/photos/',
+            {'photos': [self._fake_photo()]}, format='multipart'
+        )
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
+
+    def test_outsider_cannot_upload_photos(self, auth_agent2, second_agent, property_obj):
+        response = auth_agent2.post(
+            f'/api/v1/properties/{property_obj.id}/photos/',
+            {'photos': [self._fake_photo()]}, format='multipart'
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestAgencyWideMessagingOwner:
+
+    def _make_relation(self, agent_user, owner_user):
+        profile = AgentProfile.objects.get(user=agent_user)
+        return OwnerAgentRelation.objects.create(
+            owner=owner_user, agent=agent_user, agency=profile.agency,
+            status='active', contract_start=datetime.date.today(),
+        )
+
+    def test_agent_colleague_can_message_owner(
+        self, auth_agent2, agent_user, second_agent, owner_user
+    ):
+        _join_agency(agent_user, second_agent)
+        self._make_relation(agent_user, owner_user)
+        second_agent.refresh_from_db()
+        auth_agent2.force_authenticate(user=second_agent)
+
+        response = auth_agent2.post('/api/v1/messaging/conversations/start/', {
+            'user_id': str(owner_user.id),
+        })
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
+
+    def test_owner_can_message_agent_colleague(
+        self, auth_owner, agent_user, second_agent, owner_user
+    ):
+        _join_agency(agent_user, second_agent)
+        self._make_relation(agent_user, owner_user)
+
+        response = auth_owner.post('/api/v1/messaging/conversations/start/', {
+            'user_id': str(second_agent.id),
+        })
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
+
+    def test_owner_cannot_message_agent_outside_agency(
+        self, auth_owner, agent_user, second_agent, owner_user
+    ):
+        self._make_relation(agent_user, owner_user)
+        response = auth_owner.post('/api/v1/messaging/conversations/start/', {
+            'user_id': str(second_agent.id),
+        })
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 class TestMandateReassign:
 
     def _make_relation(self, agent_user, owner_user):

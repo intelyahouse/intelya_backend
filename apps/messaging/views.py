@@ -150,14 +150,15 @@ class StartConversationView(APIView):
             ).exists()
             conv_type = 'client_agent'
         elif user_role == 'agent' and other_role == 'owner':
+            agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
             allowed = OwnerAgentRelation.objects.filter(
-                owner=other_user, agent=request.user, status='active'
+                owner=other_user, agency_id=agency_id, status='active'
             ).exists()
             conv_type = 'agent_owner'
         elif user_role == 'owner' and other_role == 'agent':
-            allowed = OwnerAgentRelation.objects.filter(
-                owner=request.user, agent=other_user, status='active'
-            ).exists()
+            relation = OwnerAgentRelation.objects.filter(owner=request.user, status='active').first()
+            other_agency_id = getattr(getattr(other_user, 'agent_profile', None), 'agency_id', None)
+            allowed = bool(relation and other_agency_id is not None and other_agency_id == relation.agency_id)
             conv_type = 'agent_owner'
         elif user_role in ['owner', 'agent'] and other_role == 'tenant':
             conv_type = 'owner_tenant'
