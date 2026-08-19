@@ -34,15 +34,16 @@ class CreateLeaseView(APIView):
         from django.conf import settings
         from apps.agents.models import ClientAgentRelation
 
-        # Vérifier que le tenant appartient bien à cet agent
+        # Vérifier que le tenant appartient bien à l'agence de cet agent
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         tenant_id = serializer.validated_data.get('tenant').id
         if not ClientAgentRelation.objects.filter(
             client_id=tenant_id,
-            agent=request.user,
+            agency_id=agency_id,
             is_active=True
         ).exists():
             return Response(
-                error_response("Ce client ne vous est pas assigné"),
+                error_response("Ce client n'est pas lié à votre agence"),
                 status=status.HTTP_403_FORBIDDEN
             )
 

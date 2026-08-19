@@ -3,6 +3,7 @@ from .views import (
     AgencyMeView, AgencyInviteView, AgencyInvitationCancelView,
     MyAgencyInvitationsView, RespondAgencyInvitationView,
     AgencyMemberRemoveView, AgencyLeaveView, MandateReassignView,
+    ClientReassignView,
 )
 
 urlpatterns = [
@@ -14,4 +15,5 @@ urlpatterns = [
     path('invitations/received/', MyAgencyInvitationsView.as_view(), name='agency-invitations-received'),
     path('invitations/<uuid:invitation_id>/respond/', RespondAgencyInvitationView.as_view(), name='agency-invitation-respond'),
     path('mandates/<uuid:relation_id>/reassign/', MandateReassignView.as_view(), name='mandate-reassign'),
+    path('clients/<uuid:relation_id>/reassign/', ClientReassignView.as_view(), name='client-reassign'),
 ]

@@ -52,9 +52,12 @@ class TestIDORProtection:
 
     def test_cannot_access_other_user_visits(self, api_client, client_user, create_user,
                                               agent_user, property_obj):
-        from apps.agents.models import ClientAgentRelation
+        from apps.agents.models import ClientAgentRelation, AgentProfile
         from apps.visits.models import VisitRequest
-        ClientAgentRelation.objects.get_or_create(client=client_user, agent=agent_user)
+        ClientAgentRelation.objects.get_or_create(
+            client=client_user, agent=agent_user,
+            defaults={"agency": AgentProfile.objects.get(user=agent_user).agency}
+        )
         visit = VisitRequest.objects.create(
             client=client_user, agent=agent_user,
             visit_property=property_obj, status='scheduled',

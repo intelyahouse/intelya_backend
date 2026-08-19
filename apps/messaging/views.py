@@ -139,13 +139,14 @@ class StartConversationView(APIView):
         conv_type = 'client_agent'
 
         if user_role in ['client', 'tenant'] and other_role == 'agent':
-            allowed = ClientAgentRelation.objects.filter(
-                client=request.user, agent=other_user, is_active=True
-            ).exists()
+            relation = ClientAgentRelation.objects.filter(client=request.user, is_active=True).first()
+            other_agency_id = getattr(getattr(other_user, 'agent_profile', None), 'agency_id', None)
+            allowed = bool(relation and other_agency_id is not None and other_agency_id == relation.agency_id)
             conv_type = 'client_agent'
         elif user_role == 'agent' and other_role in ['client', 'tenant']:
+            agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
             allowed = ClientAgentRelation.objects.filter(
-                client=other_user, agent=request.user, is_active=True
+                client=other_user, agency_id=agency_id, is_active=True
             ).exists()
             conv_type = 'client_agent'
         elif user_role == 'agent' and other_role == 'owner':

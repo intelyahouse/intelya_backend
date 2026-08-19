@@ -172,7 +172,7 @@ def property_obj(owner_user, agent_user):
 @pytest.fixture
 def client_with_agent(create_user, agent_user):
     """Client lié à un agent"""
-    from apps.agents.models import ClientAgentRelation
+    from apps.agents.models import ClientAgentRelation, AgentProfile
     user = create_user(
         email="client_linked@test.com",
         phone="+237670000020",
@@ -181,7 +181,7 @@ def client_with_agent(create_user, agent_user):
     ClientAgentRelation.objects.get_or_create(
         client=user,
         agent=agent_user,
-        defaults={"is_active": True}
+        defaults={"is_active": True, "agency": AgentProfile.objects.get(user=agent_user).agency}
     )
     return user
 

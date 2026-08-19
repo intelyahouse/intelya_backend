@@ -77,7 +77,8 @@ class TestChooseAgent:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_agent_sees_his_clients(self, auth_agent, agent_user, client_user):
-        ClientAgentRelation.objects.create(client=client_user, agent=agent_user)
+        profile = AgentProfile.objects.get(user=agent_user)
+        ClientAgentRelation.objects.create(client=client_user, agent=agent_user, agency=profile.agency)
         response = auth_agent.get('/api/v1/agents/me/clients/')
         assert response.status_code == status.HTTP_200_OK
 

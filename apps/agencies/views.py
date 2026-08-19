@@ -309,3 +309,52 @@ class MandateReassignView(APIView):
         return Response(success_response(
             message=f"Mandat reaffecte a {new_profile.user.get_full_name()}"
         ))
+
+
+class ClientReassignView(APIView):
+    """Reaffecter un client a un autre agent de la meme agence
+    (gerant, ou l'agent actuellement en charge du client)"""
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    @extend_schema(tags=['Agencies'], summary="Reaffecter un client a un autre agent de mon agence")
+    def post(self, request, relation_id):
+        from apps.agents.models import ClientAgentRelation, AgentProfile
+
+        try:
+            relation = ClientAgentRelation.objects.select_related('agency', 'agent', 'client').get(
+                id=relation_id, is_active=True
+            )
+        except (ClientAgentRelation.DoesNotExist, ValueError):
+            return Response(error_response("Relation client introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        agency = relation.agency
+        if not (_is_gerant(request.user, agency) or relation.agent_id == request.user.id):
+            return Response(
+                error_response("Seul le gerant ou l'agent en charge peut reaffecter ce client"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        new_agent_profile_id = request.data.get('agent_profile_id')
+        try:
+            new_profile = AgentProfile.objects.select_related('user').get(
+                id=new_agent_profile_id, agency=agency
+            )
+        except (AgentProfile.DoesNotExist, ValueError, TypeError):
+            return Response(
+                error_response("Cet agent ne fait pas partie de votre agence"),
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if new_profile.user_id == relation.agent_id:
+            return Response(
+                error_response("Ce client est deja affecte a cet agent"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        relation.agent = new_profile.user
+        relation.save(update_fields=['agent'])
+        notify_mandate_reassigned(new_profile.user, relation.client.get_full_name())
+
+        return Response(success_response(
+            message=f"Client reaffecte a {new_profile.user.get_full_name()}"
+        ))

@@ -25,14 +25,16 @@ class AgentProfileAdmin(admin.ModelAdmin):
 
 @admin.register(ClientAgentRelation)
 class ClientAgentRelationAdmin(admin.ModelAdmin):
-    list_display = ['client', 'agent', 'is_active', 'created_at']
+    list_display = ['client', 'agent', 'agency', 'is_active', 'created_at']
     list_filter  = ['is_active']
+    list_select_related = ['agency']
 
 
 @admin.register(OwnerAgentRelation)
 class OwnerAgentRelationAdmin(admin.ModelAdmin):
-    list_display = ['owner', 'agent', 'status', 'contract_start', 'contract_end']
+    list_display = ['owner', 'agent', 'agency', 'status', 'contract_start', 'contract_end']
     list_filter  = ['status']
+    list_select_related = ['agency']
 
 
 @admin.register(AgentAvailabilitySlot)

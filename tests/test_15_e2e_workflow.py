@@ -44,9 +44,10 @@ class TestFluxCompletClientVisite:
     def test_flux_visite_confirmation_done(self, auth_client_with_agent, auth_agent,
                                             property_obj, agent_user, client_with_agent):
         """Flux complet : demande → confirmation → done → frais libérés"""
-        from apps.agents.models import ClientAgentRelation
+        from apps.agents.models import ClientAgentRelation, AgentProfile
         ClientAgentRelation.objects.get_or_create(
-            client=client_with_agent, agent=agent_user
+            client=client_with_agent, agent=agent_user,
+            defaults={"agency": AgentProfile.objects.get(user=agent_user).agency}
         )
 
         # 1. Demander une visite

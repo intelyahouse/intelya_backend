@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from .models import OwnerAgentRelation
 from django.db.models import Count
@@ -122,14 +123,15 @@ class AgentPublicProfileView(APIView):
 
 
 class AgentClientsView(APIView):
-    """Liste des clients de l'agent"""
+    """Liste des clients geres par l'agence de l'agent"""
     permission_classes = [IsAuthenticated, IsAgent]
 
-    @extend_schema(tags=['Agents'], summary="Mes clients")
+    @extend_schema(tags=['Agents'], summary="Clients geres par mon agence")
     def get(self, request):
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         relations = ClientAgentRelation.objects.filter(
-            agent=request.user, is_active=True
-        ).select_related('client')
+            agency_id=agency_id, is_active=True
+        ).select_related('client', 'agent')
         clients = [{
             'id': str(r.client.id),
             'full_name': r.client.get_full_name(),
@@ -138,31 +140,34 @@ class AgentClientsView(APIView):
             'role': r.client.role,
             'is_phone_verified': r.client.is_phone_verified,
             'since': r.created_at,
+            'assigned_agent_id': str(r.agent.id),
+            'assigned_agent_name': r.agent.get_full_name(),
         } for r in relations]
         return Response(success_response(clients))
 
 class AgentClientHistoryView(APIView):
-    """Historique (visites + baux) d'un client, limité à ceux gérés par cet agent"""
+    """Historique (visites + baux) d'un client, limite a ceux geres par l'agence"""
     permission_classes = [IsAuthenticated, IsAgent]
 
     @extend_schema(tags=['Agents'], summary="Historique d'un client")
     def get(self, request, client_id):
-        # Vérifie que ce client est bien lié à cet agent
+        agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
+        # Verifie que ce client est bien lie a l'agence de l'agent
         is_linked = ClientAgentRelation.objects.filter(
-            agent=request.user, client_id=client_id, is_active=True
+            agency_id=agency_id, client_id=client_id, is_active=True
         ).exists()
         if not is_linked:
             return Response(
-                error_response("Ce client n'est pas lié à votre compte"),
+                error_response("Ce client n'est pas lié à votre agence"),
                 status=status.HTTP_404_NOT_FOUND
             )
 
         visits = VisitRequest.objects.filter(
-            agent=request.user, client_id=client_id
+            agent__agent_profile__agency_id=agency_id, client_id=client_id
         ).select_related('visit_property').order_by('-created_at')
 
         contracts = LeaseContract.objects.filter(
-            agent=request.user, tenant_id=client_id
+            agent__agent_profile__agency_id=agency_id, tenant_id=client_id
         ).select_related('rental_property').order_by('-created_at')
 
         PAGE_SIZE = 10
@@ -287,12 +292,45 @@ class ChooseAgentView(APIView):
                     error_response("Vous avez déjà un agent."),
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            ClientAgentRelation.objects.create(client=user, agent=agent_profile.user)
+            ClientAgentRelation.objects.create(
+                client=user, agent=agent_profile.user, agency=agent_profile.agency,
+            )
             return Response(success_response(
-                message=f"Vous êtes maintenant lié à l'agent {agent_profile.user.get_full_name()}"
+                message=f"Vous êtes maintenant lié à l'agent {agent_profile.user.get_full_name()} ({agent_profile.agency.name})"
             ))
 
         return Response(error_response("Action non autorisée"), status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(tags=['Agents'], summary="Quitter mon agent")
+    def delete(self, request):
+        user = request.user
+        if user.role not in ['client', 'tenant']:
+            return Response(
+                error_response("Action non autorisée"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reason = request.data.get('reason', '')
+        if not reason:
+            return Response(
+                error_response("Un motif est obligatoire"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        relation = ClientAgentRelation.objects.filter(client=user, is_active=True).first()
+        if not relation:
+            return Response(
+                error_response("Vous n'avez pas d'agent actif"),
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        relation.is_active = False
+        relation.termination_reason = reason
+        relation.terminated_at = timezone.now()
+        relation.terminated_by = user
+        relation.save(update_fields=['is_active', 'termination_reason', 'terminated_at', 'terminated_by'])
+
+        return Response(success_response(message="Vous avez quitté votre agent"))
 
 class AgentOwnersView(APIView):
     """Liste des proprietaires geres par l'agence de l'agent (mandats actifs)"""

@@ -92,14 +92,22 @@ class AgentProfile(models.Model):
 
 class ClientAgentRelation(models.Model):
     id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    client    = models.OneToOneField(User, on_delete=models.CASCADE, related_name="agent_relation", limit_choices_to={"role__in": ["client", "tenant"]})
+    client    = models.ForeignKey(User, on_delete=models.CASCADE, related_name="client_agent_relations", limit_choices_to={"role__in": ["client", "tenant"]})
     agent     = models.ForeignKey(User, on_delete=models.CASCADE, related_name="client_relations", limit_choices_to={"role": "agent"})
+    agency    = models.ForeignKey("agencies.Agency", on_delete=models.PROTECT, related_name="client_relations")
     is_active = models.BooleanField(default=True, db_index=True)
+    termination_reason = models.TextField(null=True, blank=True)
+    terminated_at       = models.DateTimeField(null=True, blank=True)
+    terminated_by       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="terminated_client_relations")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name    = "Relation Client-Agent"
         unique_together = ["client", "agent"]
+        indexes = [
+            models.Index(fields=["client", "is_active"]),
+            models.Index(fields=["agency", "is_active"]),
+        ]
 
     def __str__(self):
         return f"{self.client.get_full_name()} -> Agent {self.agent.get_full_name()}"

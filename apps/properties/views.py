@@ -200,11 +200,13 @@ class PropertyDetailView(APIView):
             views_count=F("views_count") + 1
         )
 
+        prop_agency_id = getattr(getattr(prop.agent, 'agent_profile', None), 'agency_id', None)
+        viewer_agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
         can_see_full_address = (
             request.user.is_authenticated and (
                 request.user.role == 'admin' or
-                prop.agent_id == request.user.id or
-                prop.owner_id == request.user.id
+                prop.owner_id == request.user.id or
+                (viewer_agency_id is not None and viewer_agency_id == prop_agency_id)
             )
         )
         if can_see_full_address:
@@ -219,9 +221,9 @@ class PropertyDetailView(APIView):
 
             relation = ClientAgentRelation.objects.filter(
                 client=request.user, is_active=True
-            ).select_related('agent__agent_profile').first()
+            ).select_related('agent__agent_profile', 'agency').first()
 
-            if relation and prop.agent_id != relation.agent_id:
+            if relation and relation.agency_id != prop_agency_id:
                 data['agent_name'] = None
                 data['agent_profile_id'] = None
                 data['owner_name'] = None
