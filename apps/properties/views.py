@@ -216,14 +216,22 @@ class PropertyDetailView(APIView):
 
         data = serializer.data
 
-        if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
+        # Refus par defaut : on masque pour tout le monde SAUF preuve d'autorisation
+        # (can_see_full_address), quel que soit l'etat d'authentification. Avant, le
+        # masquage ne s'appliquait qu'aux clients authentifies -- une requete sans
+        # header Authorization contournait entierement la protection.
+        if not can_see_full_address:
             data['neighborhood'] = None
 
-            relation = ClientAgentRelation.objects.filter(
-                client=request.user, is_active=True
-            ).select_related('agent__agent_profile', 'agency').first()
+            relation = None
+            if request.user.is_authenticated and request.user.role in ['client', 'tenant']:
+                relation = ClientAgentRelation.objects.filter(
+                    client=request.user, is_active=True
+                ).select_related('agent__agent_profile', 'agency').first()
 
-            if relation and relation.agency_id != prop_agency_id:
+            if relation and relation.agency_id == prop_agency_id:
+                data['belongs_to_other_agent'] = False
+            else:
                 data['agent_name'] = None
                 data['agent_profile_id'] = None
                 data['owner_name'] = None
@@ -236,9 +244,7 @@ class PropertyDetailView(APIView):
                         request.build_absolute_uri(relation.agent.profile_photo.url)
                         if relation.agent.profile_photo else None
                     ),
-                }
-            else:
-                data['belongs_to_other_agent'] = False
+                } if relation else None
 
         return Response(success_response(data))
 
