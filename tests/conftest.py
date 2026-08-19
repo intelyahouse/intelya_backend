@@ -6,12 +6,6 @@ from core.utils import generate_referral_code
 User = get_user_model()
 
 
-@pytest.fixture(scope="session")
-def django_db_setup():
-    """Setup DB avec PostGIS pour tous les tests"""
-    pass
-
-
 @pytest.fixture(autouse=True)
 def reset_axes():
     """Vide les tentatives Axes entre chaque test"""
