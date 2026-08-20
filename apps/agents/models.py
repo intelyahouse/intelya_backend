@@ -92,6 +92,8 @@ class AgentProfile(models.Model):
             self.reliability_score = round(avg, 2)
             self.total_reviews = reviews.count()
             self.save(update_fields=["reliability_score", "total_reviews"])
+        if self.agency_id:
+            self.agency.update_reliability_score()
 
     @property
     def is_available(self):

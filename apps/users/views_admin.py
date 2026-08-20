@@ -242,6 +242,15 @@ class AdminDisputesView(APIView):
         dispute.status        = 'resolved'
         dispute.save()
 
+        # Plainte confirmee contre un agent d'agence — fait objectif conserve,
+        # sans ponderation automatique sur le score (regle metier a definir)
+        if decision == 'claimant_wins' and dispute.agency_id:
+            from django.db.models import F
+            from apps.agencies.models import Agency
+            Agency.objects.filter(pk=dispute.agency_id).update(
+                disputes_confirmed_against=F('disputes_confirmed_against') + 1
+            )
+
         # Libérer l'escrow selon la décision
         if dispute.related_transaction_id:
             try:

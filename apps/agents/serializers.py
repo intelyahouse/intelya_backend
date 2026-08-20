@@ -34,7 +34,13 @@ class AgentProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_agency(self, obj):
-        return {"id": str(obj.agency_id), "name": obj.agency.name} if obj.agency_id else None
+        if not obj.agency_id:
+            return None
+        return {
+            "id": str(obj.agency_id), "name": obj.agency.name,
+            "reliability_score": obj.agency.reliability_score,
+            "total_reviews": obj.agency.total_reviews,
+        }
 
 
 class PublicAgentSerializer(serializers.ModelSerializer):
@@ -55,7 +61,13 @@ class PublicAgentSerializer(serializers.ModelSerializer):
         ]
 
     def get_agency(self, obj):
-        return {"id": str(obj.agency_id), "name": obj.agency.name} if obj.agency_id else None
+        if not obj.agency_id:
+            return None
+        return {
+            "id": str(obj.agency_id), "name": obj.agency.name,
+            "reliability_score": obj.agency.reliability_score,
+            "total_reviews": obj.agency.total_reviews,
+        }
 
     def get_profile_photo(self, obj):
         photo = obj.user.profile_photo

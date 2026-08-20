@@ -4,8 +4,9 @@ from .models import Agency, AgencyInvitation
 
 @admin.register(Agency)
 class AgencyAdmin(admin.ModelAdmin):
-    list_display  = ["name", "owner_agent", "is_solo", "created_at"]
+    list_display  = ["name", "owner_agent", "is_solo", "reliability_score", "total_reviews", "disputes_confirmed_against", "created_at"]
     list_filter   = ["is_solo"]
+    readonly_fields = ["reliability_score", "total_reviews", "disputes_confirmed_against"]
     search_fields = ["name", "owner_agent__email", "owner_agent__first_name"]
 
 

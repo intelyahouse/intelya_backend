@@ -20,6 +20,19 @@ class Agency(models.Model):
     bank_account_number = models.CharField(max_length=50, null=True, blank=True)
     bank_name           = models.CharField(max_length=100, null=True, blank=True)
 
+    # ===== REPUTATION =====
+    # reliability_score/total_reviews : moyenne objective de tous les avis
+    # recus par tous les agents de l'agence (recalculee a chaque nouvel avis
+    # et a chaque changement de composition de l'agence).
+    # disputes_confirmed_against : simple compteur des litiges ou l'admin a
+    # tranche en faveur du plaignant contre un agent de cette agence -- un
+    # fait objectif, delibrement PAS transforme en penalite automatique sur
+    # le score : la regle de ponderation exacte reste une decision metier a
+    # definir, pas quelque chose a inventer ici.
+    reliability_score          = models.FloatField(default=0.0, db_index=True)
+    total_reviews              = models.IntegerField(default=0)
+    disputes_confirmed_against = models.IntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -29,6 +42,21 @@ class Agency(models.Model):
 
     def __str__(self):
         return self.name
+
+    def update_reliability_score(self):
+        from django.db.models import Avg
+        from apps.reviews.models import Review
+
+        member_user_ids = self.agents.values_list('user_id', flat=True)
+        reviews = Review.objects.filter(agent_id__in=member_user_ids, agent_rating__isnull=False)
+        if reviews.exists():
+            avg = reviews.aggregate(Avg('agent_rating'))['agent_rating__avg']
+            self.reliability_score = round(avg, 2)
+            self.total_reviews = reviews.count()
+        else:
+            self.reliability_score = 0.0
+            self.total_reviews = 0
+        self.save(update_fields=['reliability_score', 'total_reviews'])
 
 
 class AgencyInvitation(models.Model):

@@ -23,14 +23,17 @@ def recompute_is_solo(agency):
 
 @transaction.atomic
 def transfer_agent_to_agency(agent_profile, new_agency):
-    """Deplace un agent vers une nouvelle agence et recalcule is_solo
-    sur l'ancienne et la nouvelle agence."""
+    """Deplace un agent vers une nouvelle agence et recalcule is_solo et
+    la reputation agregee sur l'ancienne et la nouvelle agence -- le
+    depart/l'arrivee d'un agent change le pool d'avis qui les compose."""
     old_agency = agent_profile.agency
     agent_profile.agency = new_agency
     agent_profile.save(update_fields=["agency"])
     recompute_is_solo(new_agency)
+    new_agency.update_reliability_score()
     if old_agency:
         recompute_is_solo(old_agency)
+        old_agency.update_reliability_score()
     return agent_profile
 
 

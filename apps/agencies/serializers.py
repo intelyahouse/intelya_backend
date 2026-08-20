@@ -25,6 +25,7 @@ class AgencySerializer(serializers.ModelSerializer):
             'id', 'name', 'is_solo', 'owner_agent_id', 'owner_agent_name',
             'members', 'member_count', 'created_at',
             'mtn_momo_number', 'orange_money_number', 'bank_account_number', 'bank_name',
+            'reliability_score', 'total_reviews', 'disputes_confirmed_against',
         ]
 
     def get_members(self, obj):
