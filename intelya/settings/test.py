@@ -36,3 +36,9 @@ CACHALOT_ENABLED = False
 
 # Permettre testserver pour les tests
 ALLOWED_HOSTS = ['*', 'testserver', 'localhost', '127.0.0.1']
+
+# Executer les taches Celery en synchrone, dans le process de test --
+# aucun broker Redis n'est disponible en environnement de test, et rien
+# ne doit dependre d'un worker externe pour que les tests soient fiables.
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
