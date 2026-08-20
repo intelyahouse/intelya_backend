@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Transaction, Escrow
+from .models import Transaction, Escrow, PaymentSplitEntry
 
 
 @admin.register(Transaction)
@@ -14,3 +14,10 @@ class TransactionAdmin(admin.ModelAdmin):
 class EscrowAdmin(admin.ModelAdmin):
     list_display = ['transaction', 'amount', 'status', 'held_for', 'release_after']
     list_filter  = ['status']
+
+
+@admin.register(PaymentSplitEntry)
+class PaymentSplitEntryAdmin(admin.ModelAdmin):
+    list_display  = ['transaction', 'agency', 'amount', 'status', 'created_at']
+    list_filter   = ['status']
+    search_fields = ['agency__name', 'transaction__reference']

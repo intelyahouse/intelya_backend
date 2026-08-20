@@ -93,3 +93,38 @@ class Escrow(models.Model):
 
     def __str__(self):
         return f"Escrow {self.amount} FCFA - {self.status}"
+
+
+class PaymentSplitEntry(models.Model):
+    """Trace chaque versement de commission d'agence rattache a une
+    Transaction de loyer -- distinct du versement proprietaire (deja
+    suivi via Transaction.net_amount) et jamais perdu, meme en cas
+    d'echec du virement (statut 'failed' conserve, pas de reessai
+    automatique -- meme logique best-effort que le virement proprietaire
+    existant)."""
+
+    STATUS_CHOICES = [
+        ("pending",   "En attente"),
+        ("completed", "Reussi"),
+        ("failed",    "Echoue"),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name="split_entries")
+    agency      = models.ForeignKey("agencies.Agency", on_delete=models.PROTECT, related_name="payment_split_entries")
+    amount      = models.DecimalField(max_digits=12, decimal_places=2)
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
+    disbursed_reference = models.CharField(max_length=200, null=True, blank=True)
+    error_message        = models.TextField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name        = "Repartition de Commission"
+        verbose_name_plural = "Repartitions de Commission"
+        indexes = [
+            models.Index(fields=["agency", "status"]),
+            models.Index(fields=["transaction"]),
+        ]
+
+    def __str__(self):
+        return f"{self.agency.name}: {self.amount} FCFA ({self.status})"

@@ -14,7 +14,7 @@ from apps.notifications.utils import (
     notify_mandate_reassigned,
 )
 from .models import AgencyInvitation
-from .serializers import AgencySerializer, AgencyInvitationSerializer
+from .serializers import AgencySerializer, AgencyInvitationSerializer, AgencyPaymentInfoSerializer
 from .services import transfer_agent_to_agency, remove_agent_from_agency
 
 
@@ -39,6 +39,26 @@ class AgencyMeView(APIView):
         if not profile:
             return Response(error_response("Profil agent introuvable"), status=status.HTTP_404_NOT_FOUND)
         return Response(success_response(AgencySerializer(profile.agency).data))
+
+    @extend_schema(tags=['Agencies'], summary="Mettre a jour les coordonnees de paiement de l'agence")
+    def patch(self, request):
+        profile = _get_agent_profile(request)
+        if not profile:
+            return Response(error_response("Profil agent introuvable"), status=status.HTTP_404_NOT_FOUND)
+        agency = profile.agency
+
+        if not _is_gerant(request.user, agency):
+            return Response(
+                error_response("Seul le gerant peut modifier les coordonnees de paiement de l'agence"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = AgencyPaymentInfoSerializer(agency, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(error_response("Données invalides", serializer.errors), status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+
+        return Response(success_response(AgencySerializer(agency).data, "Coordonnées de paiement mises à jour"))
 
 
 class AgencyInviteView(APIView):

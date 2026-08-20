@@ -42,6 +42,7 @@ class CollaborationSerializer(serializers.ModelSerializer):
             'client_agency_amount', 'property_agency_amount', 'total_amount',
             'status', 'last_proposed_by_agency_name',
             'responded_by_name', 'responded_at',
+            'commission_disbursed', 'commission_disbursed_at',
             'created_at', 'updated_at', 'proposals',
         ]
 

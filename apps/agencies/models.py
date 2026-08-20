@@ -15,6 +15,11 @@ class Agency(models.Model):
     )
     is_solo     = models.BooleanField(default=True, db_index=True)
 
+    mtn_momo_number     = models.CharField(max_length=20, null=True, blank=True)
+    orange_money_number = models.CharField(max_length=20, null=True, blank=True)
+    bank_account_number = models.CharField(max_length=50, null=True, blank=True)
+    bank_name           = models.CharField(max_length=100, null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

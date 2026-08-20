@@ -13,6 +13,7 @@ from apps.visits.models import VisitRequest
 from .serializers import TransactionSerializer, InitiatePaymentSerializer
 from .services.kpay import kpay_service
 from .services.bank import bank_service
+from .services.disbursement import process_rent_transfer
 from core.utils import success_response, error_response, generate_transaction_reference, calculate_platform_commission
 from core.throttles import PaymentThrottle
 from core.permissions import IsAdmin
@@ -171,7 +172,7 @@ class CampayWebhookView(APIView):
                     txn.escrow.released_at = timezone.now()
                     txn.escrow.save()
 
-                self._process_owner_transfer(txn)
+                process_rent_transfer(txn)
                 self._process_visit_payment(txn)
 
             elif status_ in ['FAILED', 'CANCELLED', 'EXPIRED']:
@@ -192,19 +193,6 @@ class CampayWebhookView(APIView):
         VisitRequest.objects.filter(id=txn.related_visit_id).update(
             payment_status='paid', payment_reference=txn.reference
         )
-
-    def _process_owner_transfer(self, txn):
-        if txn.transaction_type != 'rent' or not txn.related_lease_id:
-            return
-        try:
-            from apps.contracts.models import LeaseContract
-            lease = LeaseContract.objects.select_related('owner__owner_profile').get(id=txn.related_lease_id)
-            owner_profile = lease.owner.owner_profile
-            phone = owner_profile.mtn_momo_number or owner_profile.orange_money_number
-            if phone and float(txn.net_amount) > 0:
-                kpay_service.disburse(phone=phone, amount=int(txn.net_amount), reference=f"OWNER-{txn.reference}")
-        except Exception as e:
-            logger.error(f"[VIREMENT PROPRIO] Erreur: {e}")
 
 
 class MyTransactionsView(APIView):
@@ -282,7 +270,7 @@ class KPayWebhookView(APIView):
                     txn.escrow.released_at = timezone.now()
                     txn.escrow.save()
 
-                self._process_owner_transfer(txn)
+                process_rent_transfer(txn)
                 self._process_visit_payment(txn)
 
             elif statusid == '02':
@@ -304,22 +292,3 @@ class KPayWebhookView(APIView):
         VisitRequest.objects.filter(id=txn.related_visit_id).update(
             payment_status='paid', payment_reference=txn.reference
         )
-
-    def _process_owner_transfer(self, txn):
-        if txn.transaction_type != 'rent' or not txn.related_lease_id:
-            return
-        try:
-            from apps.contracts.models import LeaseContract
-            lease = LeaseContract.objects.select_related(
-                'owner__owner_profile'
-            ).get(id=txn.related_lease_id)
-            owner_profile = lease.owner.owner_profile
-            phone = owner_profile.mtn_momo_number or owner_profile.orange_money_number
-            if phone and float(txn.net_amount) > 0:
-                kpay_service.disburse(
-                    phone=phone,
-                    amount=int(txn.net_amount),
-                    reference=f"OWNER-{txn.reference}"
-                )
-        except Exception as e:
-            logger.error(f"[KPAY VIREMENT PROPRIO] Erreur: {e}")

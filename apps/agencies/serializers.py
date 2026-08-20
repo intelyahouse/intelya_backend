@@ -24,6 +24,7 @@ class AgencySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'is_solo', 'owner_agent_id', 'owner_agent_name',
             'members', 'member_count', 'created_at',
+            'mtn_momo_number', 'orange_money_number', 'bank_account_number', 'bank_name',
         ]
 
     def get_members(self, obj):
@@ -32,6 +33,12 @@ class AgencySerializer(serializers.ModelSerializer):
 
     def get_member_count(self, obj):
         return obj.agents.count()
+
+
+class AgencyPaymentInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Agency
+        fields = ['mtn_momo_number', 'orange_money_number', 'bank_account_number', 'bank_name']
 
 
 class AgencyInvitationSerializer(serializers.ModelSerializer):

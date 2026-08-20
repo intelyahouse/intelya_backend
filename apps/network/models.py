@@ -50,6 +50,9 @@ class Collaboration(models.Model):
     )
     responded_at  = models.DateTimeField(null=True, blank=True)
 
+    commission_disbursed    = models.BooleanField(default=False, db_index=True)
+    commission_disbursed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
