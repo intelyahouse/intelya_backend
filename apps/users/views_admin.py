@@ -115,9 +115,11 @@ class AdminValidateUserView(APIView):
                 from apps.owners.models import OwnerProfile
                 OwnerProfile.objects.get_or_create(user=user)
 
-            # Notifier l'utilisateur
+            # Notifier l'utilisateur — push + email (notify_account_validated) + SMS
             from apps.notifications.utils import notify_account_validated
+            from apps.notifications.services.sms import sms_service
             notify_account_validated(user)
+            sms_service.send_account_validated(user.phone, user.role)
 
             return Response(success_response(message=f"Compte {user.get_full_name()} validé ✅"))
 
@@ -291,7 +293,7 @@ class AdminDisputesView(APIView):
             notify(
                 party, 'dispute_decided', "Litige tranché",
                 f"Décision : {dispute.get_decision_display()}." + (f" {note}" if note else ""),
-                {'dispute_id': str(dispute.id)}
+                {'dispute_id': str(dispute.id)}, send_email=True
             )
 
         return Response(success_response(

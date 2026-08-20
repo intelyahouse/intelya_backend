@@ -44,7 +44,7 @@ class CreateDisputeView(APIView):
         notify(
             dispute.defendant, 'dispute_opened', "Un litige a été ouvert contre vous",
             f"{request.user.get_full_name()} a ouvert un litige : {dispute.title}. Vous avez 48h pour répondre.",
-            {'dispute_id': str(dispute.id)}
+            {'dispute_id': str(dispute.id)}, send_email=True
         )
         _notify_admins(
             'dispute_opened', "Nouveau litige à surveiller",
@@ -80,7 +80,7 @@ class RespondDisputeView(APIView):
         notify(
             dispute.claimant, 'dispute_responded', "Réponse reçue sur votre litige",
             f"{dispute.defendant.get_full_name()} a répondu à votre litige : {dispute.title}.",
-            {'dispute_id': str(dispute.id)}
+            {'dispute_id': str(dispute.id)}, send_email=True
         )
         _notify_admins(
             'dispute_responded', "Litige prêt pour arbitrage",

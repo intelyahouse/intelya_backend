@@ -17,8 +17,10 @@ from .serializers import (
     ChangePasswordSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, RoleRequestSerializer
 )
-from .models import OTPVerification
+from .models import OTPVerification, UserDevice
 from core.utils import generate_otp, success_response, error_response
+from apps.notifications.services.sms import sms_service
+from apps.notifications.services.email import email_service
 
 User = get_user_model()
 
@@ -59,7 +61,7 @@ class RegisterView(APIView):
             user=user, code=code,
             phone=user.phone, expires_at=expires_at
         )
-        print(f"[SMS] Code OTP pour {user.phone}: {code}")
+        sms_service.send_otp(user.phone, code)
 
 
 @method_decorator(ratelimit(key='ip', rate='3/m', block=True), name='post')
@@ -237,7 +239,7 @@ class ResendOTPView(APIView):
             user=user, code=code,
             phone=phone, expires_at=expires_at
         )
-        print(f"[SMS] Nouveau OTP pour {phone}: {code}")
+        sms_service.send_otp(phone, code)
 
         return Response(success_response(message="Code OTP renvoyé"))
 
@@ -368,10 +370,11 @@ class ForgotPasswordView(APIView):
             user=user, code=code,
             phone=user.phone, expires_at=expires_at
         )
-        print(f"[RESET PASSWORD] Code pour {user.email} / {user.phone}: {code}")
+        sms_service.send_otp(user.phone, code)
+        email_service.send_otp(user.email, code)
 
         return Response(success_response(
-            message="Code de réinitialisation envoyé sur votre téléphone."
+            message="Code de réinitialisation envoyé sur votre téléphone et par email."
         ))
 
 
@@ -512,10 +515,44 @@ class GoogleCompletePhoneView(APIView):
             user=user, code=code,
             phone=user.phone, expires_at=expires_at
         )
-        print(f"[SMS] Code OTP pour {user.phone}: {code}")
+        sms_service.send_otp(user.phone, code)
 
         return Response(success_response(
             {'user_id': str(user.id), 'phone': user.phone},
             "Code envoyé par SMS. Vérifiez votre téléphone."
         ))
-        
+
+
+class RegisterDeviceView(APIView):
+    """Enregistrer/desenregistrer le token FCM d'un appareil pour recevoir
+    les notifications push. Sans cet appel, push_service.send_to_user()
+    ne trouve jamais de destinataire, meme si Firebase est correctement
+    configure cote serveur."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Users'], summary="Enregistrer mon token FCM")
+    def post(self, request):
+        device_token = request.data.get('device_token')
+        device_type  = request.data.get('device_type')
+
+        if not device_token or device_type not in ['android', 'ios', 'web']:
+            return Response(
+                error_response("device_token et device_type ('android'|'ios'|'web') sont requis"),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        UserDevice.objects.update_or_create(
+            user=request.user, device_token=device_token,
+            defaults={'device_type': device_type, 'is_active': True}
+        )
+        return Response(success_response(message="Appareil enregistré"), status=status.HTTP_201_CREATED)
+
+    @extend_schema(tags=['Users'], summary="Desenregistrer un token FCM (deconnexion)")
+    def delete(self, request):
+        device_token = request.data.get('device_token')
+        if not device_token:
+            return Response(error_response("device_token est requis"), status=status.HTTP_400_BAD_REQUEST)
+
+        UserDevice.objects.filter(user=request.user, device_token=device_token).update(is_active=False)
+        return Response(success_response(message="Appareil désenregistré"))
+

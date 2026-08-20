@@ -6,8 +6,10 @@ from .services.push import push_service
 from django.utils import timezone
 
 
-def notify(user, notification_type, title, body, data=None, send_push=True):
-    """Créer une notification en base + envoyer push"""
+def notify(user, notification_type, title, body, data=None, send_push=True, send_email=False):
+    """Créer une notification en base + envoyer push (+ email si demandé,
+    pour les evenements assez importants pour meriter une trace hors-app :
+    validation de compte, paiement, litige, invitation d'agence...)"""
     notification = Notification.objects.create(
         recipient=user,
         notification_type=notification_type,
@@ -17,6 +19,9 @@ def notify(user, notification_type, title, body, data=None, send_push=True):
     )
     if send_push:
         push_service.send_to_user(user, title, body, data)
+    if send_email:
+        from .services.email import email_service
+        email_service.send_notification(user.email, title, body)
     return notification
 
 
@@ -62,6 +67,7 @@ def notify_account_validated(user):
         notification_type='account_validated',
         title="Compte validé ✅",
         body="Votre compte INTELYA HAVEN a été validé. Vous pouvez maintenant accéder à toutes les fonctionnalités.",
+        send_email=True,
     )
 
 
@@ -71,6 +77,7 @@ def notify_payment_success(user, amount):
         notification_type='payment_success',
         title="Paiement réussi ✅",
         body=f"Votre paiement de {amount} FCFA a été traité avec succès.",
+        send_email=True,
     )
 
 
@@ -98,6 +105,7 @@ def notify_agency_invitation(invited_user, agency_name, inviter_name):
         notification_type='agency_invitation',
         title="Invitation a rejoindre une agence",
         body=f"{inviter_name} vous invite a rejoindre l'agence {agency_name}",
+        send_email=True,
     )
 
 

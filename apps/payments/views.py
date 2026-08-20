@@ -13,7 +13,7 @@ from apps.visits.models import VisitRequest
 from .serializers import TransactionSerializer, InitiatePaymentSerializer
 from .services.kpay import kpay_service
 from .services.bank import bank_service
-from .services.disbursement import process_rent_transfer
+from .services.disbursement import process_rent_transfer, notify_payment_completed
 from .services.fees import get_rent_fee, split_rent_fee
 from core.utils import success_response, error_response, generate_transaction_reference, calculate_platform_commission
 from core.throttles import PaymentThrottle
@@ -213,6 +213,7 @@ class CampayWebhookView(APIView):
 
                 process_rent_transfer(txn)
                 self._process_visit_payment(txn)
+                notify_payment_completed(txn)
 
             elif status_ in ['FAILED', 'CANCELLED', 'EXPIRED']:
                 txn.status = 'failed'
@@ -311,6 +312,7 @@ class KPayWebhookView(APIView):
 
                 process_rent_transfer(txn)
                 self._process_visit_payment(txn)
+                notify_payment_completed(txn)
 
             elif statusid == '02':
                 txn.status = 'failed'

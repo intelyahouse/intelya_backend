@@ -13,6 +13,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def notify_payment_completed(txn):
+    """Notifie le payeur (push + email + SMS) qu'une transaction est
+    completee -- notify_payment_success() existait deja mais n'etait
+    jamais appele nulle part, le paiement reussi restait silencieux."""
+    if not txn.payer_id:
+        return
+    from apps.notifications.utils import notify_payment_success
+    from apps.notifications.services.sms import sms_service
+
+    notify_payment_success(txn.payer, txn.amount)
+    if txn.payer.phone:
+        sms_service.send_payment_received(txn.payer.phone, txn.amount)
+
+
 def _transfer_to_owner(txn, lease):
     from .kpay import kpay_service
 
