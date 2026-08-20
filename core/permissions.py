@@ -44,22 +44,6 @@ class IsOwner(BasePermission):
         )
 
 
-class IsOwnerRole(BasePermission):
-    """Reservé au role proprietaire, SANS exiger la validation -- pour les
-    ecrans (ex: tableau de bord) qu'un proprietaire en attente doit pouvoir
-    consulter pour justement voir qu'il est en attente et ce qu'il pourra
-    faire une fois valide."""
-    message = "Acces reserve aux proprietaires."
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role == "owner" and
-            not request.user.is_blocked
-        )
-
-
 class IsClient(BasePermission):
     """Reservé aux clients non bloques"""
     message = "Acces reserve aux clients."

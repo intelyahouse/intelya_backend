@@ -113,8 +113,24 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
 
 class PropertyAdminSerializer(PropertyDetailSerializer):
     """Version admin — avec adresse complète"""
+    is_publishable = serializers.SerializerMethodField()
+    photo_count    = serializers.SerializerMethodField()
+    video_duration_seconds = serializers.SerializerMethodField()
+
     class Meta(PropertyDetailSerializer.Meta):
-        fields = PropertyDetailSerializer.Meta.fields + ['full_address']
+        fields = PropertyDetailSerializer.Meta.fields + [
+            'full_address', 'is_publishable', 'photo_count', 'video_duration_seconds'
+        ]
+
+    def get_is_publishable(self, obj):
+        return obj.meets_publication_requirements()
+
+    def get_photo_count(self, obj):
+        return obj.photos.count()
+
+    def get_video_duration_seconds(self, obj):
+        video = getattr(obj, 'video', None)
+        return video.duration_seconds if video else 0
 
 
 class CreatePropertySerializer(serializers.ModelSerializer):

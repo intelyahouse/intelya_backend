@@ -135,9 +135,12 @@ def admin_user(create_user):
 
 @pytest.fixture
 def property_obj(owner_user, agent_user):
-    from apps.properties.models import Property
+    from apps.properties.models import Property, PropertyPhoto, PropertyVideo
     from apps.agents.models import OwnerAgentRelation, AgentProfile
     import datetime
+    import io
+    from PIL import Image
+    from django.core.files.base import ContentFile
 
     OwnerAgentRelation.objects.get_or_create(
         owner=owner_user,
@@ -148,7 +151,7 @@ def property_obj(owner_user, agent_user):
             "agency": AgentProfile.objects.get(user=agent_user).agency,
         }
     )
-    return Property.objects.create(
+    prop = Property.objects.create(
         owner=owner_user,
         agent=agent_user,
         title="Appartement Test",
@@ -167,6 +170,21 @@ def property_obj(owner_user, agent_user):
         has_generator=True,
         has_parking=True,
     )
+
+    # Respecte le minimum de publication (MIN_PROPERTY_PHOTOS photos +
+    # video >= MIN_VIDEO_DURATION_SECONDS) pour que ce bien apparaisse par
+    # defaut dans la recherche publique, comme la grande majorite des tests
+    # qui utilisent ce fixture s'y attendent.
+    for i in range(4):
+        buf = io.BytesIO()
+        Image.new('RGB', (100, 100)).save(buf, format='JPEG')
+        PropertyPhoto.objects.create(
+            property=prop,
+            photo=ContentFile(buf.getvalue(), name=f'photo{i}.jpg'),
+        )
+    PropertyVideo.objects.create(property=prop, duration_seconds=90)
+
+    return prop
 
 
 @pytest.fixture

@@ -333,6 +333,13 @@ RENT_SURCHARGE_ENABLED       = not FREE_MODE
 RENT_SURCHARGE_PLATFORM_PERCENT = config('RENT_SURCHARGE_PLATFORM_PERCENT', default=60, cast=float)
 RENT_SURCHARGE_AGENCY_PERCENT   = config('RENT_SURCHARGE_AGENCY_PERCENT', default=40, cast=float)
 
+# ===== EXIGENCES MINIMALES DE PUBLICATION D'UN BIEN =====
+# Un bien avec moins que ce minimum n'apparait pas dans la recherche publique
+# ni sur sa fiche pour un visiteur non autorise -- seuls le proprietaire,
+# l'agent/agence gestionnaire et l'admin le voient (pour finir de le completer).
+MIN_PROPERTY_PHOTOS         = config('MIN_PROPERTY_PHOTOS', default=4, cast=int)
+MIN_VIDEO_DURATION_SECONDS  = config('MIN_VIDEO_DURATION_SECONDS', default=60, cast=int)
+
 PLATFORM_NAME = 'INTELYA HAVEN'
 PLATFORM_CURRENCY = 'FCFA'
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')

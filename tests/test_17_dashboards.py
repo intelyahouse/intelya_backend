@@ -111,18 +111,29 @@ class TestAgencyDashboard:
 
 class TestOwnerDashboard:
 
-    def test_no_agency_not_validated(self, auth_client, create_user):
+    def test_not_validated_owner_blocked_from_dashboard(self, auth_client, create_user):
+        """Avant validation, aucun acces au dashboard -- c'est la
+        notification de validation qui signale que l'espace est ouvert."""
         from rest_framework.test import APIClient
         owner = create_user(email='dash_owner1@test.com', phone='+237670000501', role='owner', is_validated=False)
         auth_owner = APIClient()
         auth_owner.force_authenticate(user=owner)
 
         r = auth_owner.get('/api/v1/owners/me/dashboard/')
+        assert r.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_validated_owner_no_agency(self, owner_user):
+        from rest_framework.test import APIClient
+        auth_owner = APIClient()
+        auth_owner.force_authenticate(user=owner_user)
+
+        r = auth_owner.get('/api/v1/owners/me/dashboard/')
         assert r.status_code == status.HTTP_200_OK
         data = r.data['data']
-        assert data['status']['is_validated'] is False
+        assert data['status']['is_validated'] is True
+        assert data['status']['has_active_agency'] is False
         actions = {a['action']: a for a in data['available_actions']}
-        assert actions['add_property']['available'] is False
+        assert actions['add_property']['available'] is True
         assert actions['choose_agency']['available'] is True
 
     def test_with_active_agency_relation(self, owner_user, agent_user):
@@ -142,6 +153,29 @@ class TestOwnerDashboard:
         actions = {a['action']: a for a in data['available_actions']}
         assert actions['choose_agency']['available'] is False
         assert actions['terminate_mandate']['available'] is True
+
+    def test_late_payments_visible_to_owner(
+        self, owner_user, agent_user, client_with_agent, property_obj
+    ):
+        profile = AgentProfile.objects.get(user=agent_user)
+        lease = LeaseContract.objects.create(
+            tenant=client_with_agent, owner=owner_user, agent=agent_user, agency=profile.agency,
+            rental_property=property_obj, monthly_rent=30000, deposit_amount=60000,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today() + datetime.timedelta(days=365),
+            payment_day=5, status='active', signed_by_tenant=True, signed_by_owner=True,
+        )
+        RentPayment.objects.create(
+            lease=lease, tenant=client_with_agent, amount=30000, status='late',
+            due_date=datetime.date.today() - datetime.timedelta(days=10),
+            period_month=datetime.date.today().month, period_year=datetime.date.today().year,
+        )
+
+        from rest_framework.test import APIClient
+        auth_owner = APIClient()
+        auth_owner.force_authenticate(user=owner_user)
+        r = auth_owner.get('/api/v1/owners/me/dashboard/')
+        assert r.data['data']['status']['late_payments_count'] == 1
 
     def test_unauthenticated_blocked(self, api_client):
         r = api_client.get('/api/v1/owners/me/dashboard/')

@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.cache import cache
-from django.db.models import Q, F
+from django.db.models import Q, F, Count
 from drf_spectacular.utils import extend_schema
 from .models import Property, PropertyPhoto, PropertyLike
 from .serializers import PropertyListSerializer, PropertyDetailSerializer, PropertyAdminSerializer, CreatePropertySerializer
@@ -50,8 +50,13 @@ class PropertyListView(APIView):
 
         # Requête optimisée avec select_related
         # Requete optimisee avec select_related -- la ville reste un filtre "dur" (jamais elargi).
+        # Un bien incomplet (moins de MIN_PROPERTY_PHOTOS photos ou video trop courte/absente)
+        # n'apparait jamais dans la recherche publique.
         base_queryset = Property.objects.filter(
             status='available'
+        ).annotate(photo_count=Count('photos', distinct=True)).filter(
+            photo_count__gte=settings.MIN_PROPERTY_PHOTOS,
+            video__duration_seconds__gte=settings.MIN_VIDEO_DURATION_SECONDS,
         ).select_related('agent', 'owner').prefetch_related('photos', 'likes')
         if city:
             base_queryset = base_queryset.filter(city__icontains=city)
@@ -209,6 +214,12 @@ class PropertyDetailView(APIView):
                 (viewer_agency_id is not None and viewer_agency_id == prop_agency_id)
             )
         )
+
+        # Bien incomplet (moins de MIN_PROPERTY_PHOTOS photos / video trop courte) :
+        # invisible pour tout le monde sauf le proprietaire, l'agence gestionnaire et
+        # l'admin, qui doivent encore pouvoir y acceder pour le completer.
+        if not can_see_full_address and not prop.meets_publication_requirements():
+            return Response(error_response("Bien introuvable"), status=status.HTTP_404_NOT_FOUND)
         if can_see_full_address:
             serializer = PropertyAdminSerializer(prop, context={'request': request})
         else:

@@ -36,6 +36,23 @@ def _make_relation(client_user, agent_user):
     )
 
 
+def _publishable_property(**kwargs):
+    """Cree un bien respectant le minimum de publication (4 photos + video
+    >= 1 minute) pour qu'il soit visible dans les tests d'exclusivite."""
+    import io
+    from PIL import Image
+    from django.core.files.base import ContentFile
+    from apps.properties.models import Property, PropertyPhoto, PropertyVideo
+
+    prop = Property.objects.create(**kwargs)
+    for i in range(4):
+        buf = io.BytesIO()
+        Image.new('RGB', (100, 100)).save(buf, format='JPEG')
+        PropertyPhoto.objects.create(property=prop, photo=ContentFile(buf.getvalue(), name=f'p{i}.jpg'))
+    PropertyVideo.objects.create(property=prop, duration_seconds=90)
+    return prop
+
+
 class TestChooseAndLeaveAgent:
 
     def test_choose_agent_sets_agency(self, auth_client, client_user, agent_user):
@@ -140,11 +157,10 @@ class TestPropertyExclusivityByAgency:
     def test_client_sees_full_info_for_agency_property_from_colleague(
         self, auth_client, client_user, agent_user, second_agent, owner_user
     ):
-        from apps.properties.models import Property
         _join_agency(agent_user, second_agent)
         _make_relation(client_user, agent_user)
 
-        prop = Property.objects.create(
+        prop = _publishable_property(
             owner=owner_user, agent=second_agent,
             title="Bien du collegue", description="x" * 300,
             property_type="apartment", price=100000, payment_period="monthly",
@@ -158,11 +174,10 @@ class TestPropertyExclusivityByAgency:
     def test_client_sees_masked_info_for_other_agency_property(
         self, auth_client, client_user, agent_user, second_agent, owner_user
     ):
-        from apps.properties.models import Property
         # second_agent garde sa propre agence solo (pas de _join_agency)
         _make_relation(client_user, agent_user)
 
-        prop = Property.objects.create(
+        prop = _publishable_property(
             owner=owner_user, agent=second_agent,
             title="Bien d'une autre agence", description="x" * 300,
             property_type="apartment", price=100000, payment_period="monthly",

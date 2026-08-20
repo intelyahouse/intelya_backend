@@ -78,6 +78,54 @@ class TestListeBiens:
         assert r.status_code == status.HTTP_200_OK
 
 
+class TestExigencesPublication:
+    """Un bien avec moins de 4 photos ou moins d'1 minute de video reste
+    invisible au public -- seuls proprietaire/agence/admin y accedent."""
+
+    def _incomplete_property(self, owner_user, agent_user):
+        from apps.properties.models import Property
+        return Property.objects.create(
+            owner=owner_user, agent=agent_user, title="Bien incomplet",
+            description="Description suffisamment longue pour valider les contraintes minimales de la plateforme"
+                         " INTELYA HAVEN qui requiert au moins cinquante mots dans la description du bien immobilier",
+            property_type="apartment", status="available", price=100000,
+            payment_period="monthly", bedrooms=2, bathrooms=1, area_sqm=80,
+            city="Douala", neighborhood="Akwa", full_address="Rue Test N°2, Akwa, Douala",
+        )
+
+    def test_bien_sans_photos_absent_recherche(self, api_client, owner_user, agent_user):
+        self._incomplete_property(owner_user, agent_user)
+        r = api_client.get('/api/v1/properties/?city=Douala')
+        assert r.status_code == status.HTTP_200_OK
+        assert r.data['count'] == 0
+
+    def test_bien_incomplet_detail_404_pour_public(self, api_client, owner_user, agent_user):
+        prop = self._incomplete_property(owner_user, agent_user)
+        r = api_client.get(f'/api/v1/properties/{prop.id}/')
+        assert r.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_bien_incomplet_visible_par_le_proprietaire(self, owner_user, agent_user):
+        prop = self._incomplete_property(owner_user, agent_user)
+        from rest_framework.test import APIClient
+        auth_owner = APIClient()
+        auth_owner.force_authenticate(user=owner_user)
+        r = auth_owner.get(f'/api/v1/properties/{prop.id}/')
+        assert r.status_code == status.HTTP_200_OK
+        assert r.data['data']['is_publishable'] is False
+        assert r.data['data']['photo_count'] == 0
+
+    def test_bien_incomplet_visible_par_lagent_gestionnaire(self, auth_agent, owner_user, agent_user):
+        prop = self._incomplete_property(owner_user, agent_user)
+        r = auth_agent.get(f'/api/v1/properties/{prop.id}/')
+        assert r.status_code == status.HTTP_200_OK
+
+    def test_bien_complet_est_publishable(self, auth_agent, property_obj):
+        r = auth_agent.get(f'/api/v1/properties/{property_obj.id}/')
+        assert r.data['data']['is_publishable'] is True
+        assert r.data['data']['photo_count'] == 4
+        assert r.data['data']['video_duration_seconds'] == 90
+
+
 class TestCreationBien:
 
     def test_agent_cree_bien(self, auth_agent, agent_user, owner_user):

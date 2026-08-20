@@ -127,6 +127,15 @@ class Property(models.Model):
             'neighborhood': self.neighborhood,
         }
 
+    def meets_publication_requirements(self):
+        """Minimum 4 photos + video d'au moins 1 minute (settings.MIN_PROPERTY_PHOTOS/
+        MIN_VIDEO_DURATION_SECONDS) -- en dessous, le bien reste invisible au public."""
+        from django.conf import settings
+        if self.photos.count() < settings.MIN_PROPERTY_PHOTOS:
+            return False
+        video = getattr(self, 'video', None)
+        return bool(video and video.duration_seconds >= settings.MIN_VIDEO_DURATION_SECONDS)
+
 
 class PropertyPhoto(models.Model):
     """Photos du bien immobilier"""

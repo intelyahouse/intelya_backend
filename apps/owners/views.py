@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema
 from .models import OwnerProfile
 from .serializers import OwnerProfileSerializer, OwnerBankAccountSerializer
 from apps.agents.models import OwnerAgentRelation, AgentProfile
-from core.permissions import IsOwner, IsOwnerRole, IsAdmin
+from core.permissions import IsOwner, IsAdmin
 from core.utils import success_response, error_response
 from django.utils import timezone
 
@@ -165,13 +165,15 @@ class OwnerAgentRelationView(APIView):
 
 class OwnerDashboardView(APIView):
     """Tableau de bord proprietaire — statut et actions disponibles.
-    Accessible meme non valide (IsOwnerRole, pas IsOwner) : c'est justement
-    ici qu'un proprietaire en attente doit voir qu'il est en attente."""
-    permission_classes = [IsAuthenticated, IsOwnerRole]
+    Reserve aux comptes valides (IsOwner) : avant validation, aucun acces
+    au dashboard -- c'est la notification de validation (email/SMS/push)
+    qui indique au proprietaire que son espace est desormais accessible."""
+    permission_classes = [IsAuthenticated, IsOwner]
 
     @extend_schema(tags=['Owners'], summary="Mon tableau de bord propriétaire")
     def get(self, request):
         from apps.properties.models import Property
+        from apps.leases.models import RentPayment
         user = request.user
         profile = OwnerProfile.objects.filter(user=user).first()
 
@@ -185,6 +187,8 @@ class OwnerDashboardView(APIView):
         if relation and hasattr(relation.agent, 'agent_profile'):
             agency = relation.agent.agent_profile.agency
 
+        late_payments = RentPayment.objects.filter(lease__owner=user, status='late')
+
         status_data = {
             'is_validated': user.is_validated,
             'total_properties': total_properties,
@@ -194,6 +198,8 @@ class OwnerDashboardView(APIView):
             'has_active_agency': bool(relation),
             'agency_name': agency.name if agency else None,
             'agent_name': relation.agent.get_full_name() if relation else None,
+            'late_payments_count': late_payments.count(),
+            'pending_payments_count': RentPayment.objects.filter(lease__owner=user, status='pending').count(),
         }
 
         actions = [
