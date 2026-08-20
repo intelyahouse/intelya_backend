@@ -91,6 +91,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         'self', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='validated_users'
     )
+    role_requested_at        = models.DateTimeField(null=True, blank=True)
+    validation_reminder_sent = models.BooleanField(default=False)
 
     objects = UserManager()
     USERNAME_FIELD  = 'email'

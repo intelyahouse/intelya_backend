@@ -452,6 +452,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.disputes.tasks.escalate_stale_disputes',
         'schedule': crontab(minute=0),
     },
+    # Demandes agent/proprietaire en attente depuis 48h — toutes les heures
+    'remind-pending-validations': {
+        'task': 'apps.users.tasks.remind_pending_validations',
+        'schedule': crontab(minute=0),
+    },
     # Rapports mensuels — 1er de chaque mois à 6h00
     'monthly-reports': {
         'task': 'apps.leases.tasks.generate_monthly_reports',

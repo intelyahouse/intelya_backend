@@ -124,9 +124,23 @@ class AdminValidateUserView(APIView):
             return Response(success_response(message=f"Compte {user.get_full_name()} validé ✅"))
 
         elif action == 'reject':
+            requested_role = user.role
             user.validation_status = 'rejected'
             user.validation_note  = note
+            # Retour au role client -- sans ca l'utilisateur reste bloque :
+            # pas valide comme agent/proprietaire, mais plus reconnu comme
+            # client non plus (IsClient exige role in ['client','tenant']).
+            user.role = 'client'
             user.save()
+
+            from apps.notifications.utils import notify
+            notify(
+                user, 'system', "Votre demande n'a pas été retenue",
+                f"Votre demande pour devenir {requested_role} a été rejetée."
+                + (f" Motif : {note}" if note else ""),
+                send_email=True
+            )
+
             return Response(success_response(message=f"Compte {user.get_full_name()} rejeté"))
 
         return Response(error_response("Action invalide. Utilisez 'approve' ou 'reject'"), status=400)

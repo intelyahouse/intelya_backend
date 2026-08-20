@@ -323,12 +323,23 @@ class RequestRoleView(APIView):
 
         data = serializer.validated_data
         user = request.user
+        user.role = data['requested_role']
         user.cni_number = data['cni_number']
         user.cni_front_photo = data['cni_front_photo']
         user.cni_back_photo = data['cni_back_photo']
         user.selfie_photo = data['selfie_photo']
         user.validation_status = 'pending'
+        user.role_requested_at = timezone.now()
+        user.validation_reminder_sent = False
         user.save()
+
+        from apps.notifications.utils import notify_bulk
+        admins = User.objects.filter(role='admin', is_active=True)
+        notify_bulk(
+            admins, 'system', "Nouvelle demande de validation",
+            f"{user.get_full_name()} demande à devenir {data['requested_role']}.",
+            {'user_id': str(user.id)}
+        )
 
         return Response(success_response(
             message=f"Demande envoyée pour devenir {data['requested_role']}. L'admin va valider votre compte."
