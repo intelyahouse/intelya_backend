@@ -14,6 +14,16 @@ pytestmark = pytest.mark.django_db
 MOCK_OK = {'success': True, 'reference': 'KPAY-OK'}
 
 
+@pytest.fixture(autouse=True)
+def rent_fee_tiers(db):
+    """Les paliers sont normalement semes par une migration de donnees,
+    mais un test transaction=True ailleurs dans la suite (test_12_performance)
+    flush completement la base de test sans jamais rejouer les migrations de
+    donnees -- ces tests ne doivent donc pas dependre de leur presence."""
+    RentFeeTier.objects.get_or_create(min_rent=1, max_rent=50000, fee_amount=500)
+    RentFeeTier.objects.get_or_create(min_rent=50001, max_rent=100000, fee_amount=1000)
+
+
 def _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000):
     profile = AgentProfile.objects.get(user=agent_user)
     return LeaseContract.objects.create(
