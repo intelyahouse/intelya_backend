@@ -206,11 +206,14 @@ class AdminDisputesView(APIView):
         from apps.disputes.serializers import DisputeSerializer
         from core.pagination import StandardResultsSetPagination
         disputes = Dispute.objects.all().select_related(
-            'claimant', 'defendant'
+            'claimant', 'defendant', 'agency'
         ).order_by('-created_at')
         status_ = request.query_params.get('status')
         if status_:
             disputes = disputes.filter(status=status_)
+        agency_id = request.query_params.get('agency_id')
+        if agency_id:
+            disputes = disputes.filter(agency_id=agency_id)
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(disputes, request)
         return paginator.get_paginated_response(
@@ -273,6 +276,14 @@ class AdminDisputesView(APIView):
 
         from core.audit import log_dispute_decided
         log_dispute_decided(request.user, dispute, decision, request)
+
+        from apps.notifications.utils import notify
+        for party in [dispute.claimant, dispute.defendant]:
+            notify(
+                party, 'dispute_decided', "Litige tranché",
+                f"Décision : {dispute.get_decision_display()}." + (f" {note}" if note else ""),
+                {'dispute_id': str(dispute.id)}
+            )
 
         return Response(success_response(
             DisputeSerializer(dispute).data,

@@ -29,6 +29,10 @@ class Dispute(models.Model):
     id                     = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     claimant               = models.ForeignKey(User, on_delete=models.CASCADE, related_name="disputes_filed")
     defendant              = models.ForeignKey(User, on_delete=models.CASCADE, related_name="disputes_received")
+    agency                 = models.ForeignKey(
+        "agencies.Agency", on_delete=models.SET_NULL, null=True, blank=True, related_name="disputes",
+        help_text="Deduite automatiquement si le defendeur est un agent rattache a une agence."
+    )
     dispute_type           = models.CharField(max_length=20, choices=TYPE_CHOICES, db_index=True)
     status                 = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open", db_index=True)
     title                  = models.CharField(max_length=200)
@@ -52,6 +56,7 @@ class Dispute(models.Model):
         indexes = [
             models.Index(fields=["claimant", "status"]),
             models.Index(fields=["defendant", "status"]),
+            models.Index(fields=["agency", "status"]),
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["dispute_type", "status"]),
         ]

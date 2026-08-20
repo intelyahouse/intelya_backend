@@ -32,6 +32,9 @@ class Notification(models.Model):
         ("collaboration_countered",    "Contre-proposition collaboration"),
         ("collaboration_accepted",     "Collaboration acceptee"),
         ("collaboration_rejected",     "Collaboration refusee"),
+        ("dispute_opened",     "Litige ouvert"),
+        ("dispute_responded",  "Reponse au litige"),
+        ("dispute_decided",    "Litige tranche"),
         ("system",            "Systeme"),
     ]
 

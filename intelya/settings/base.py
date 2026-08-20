@@ -440,6 +440,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.boost.tasks.check_boost_expiry',
         'schedule': crontab(hour=6, minute=0),
     },
+    # Litiges sans reponse apres 48h — toutes les heures
+    'escalate-stale-disputes': {
+        'task': 'apps.disputes.tasks.escalate_stale_disputes',
+        'schedule': crontab(minute=0),
+    },
     # Rapports mensuels — 1er de chaque mois à 6h00
     'monthly-reports': {
         'task': 'apps.leases.tasks.generate_monthly_reports',

@@ -4,9 +4,9 @@ from .models import Dispute, Report
 
 @admin.register(Dispute)
 class DisputeAdmin(admin.ModelAdmin):
-    list_display  = ['title', 'claimant', 'defendant', 'dispute_type', 'status', 'decision', 'created_at']
+    list_display  = ['title', 'claimant', 'defendant', 'agency', 'dispute_type', 'status', 'decision', 'created_at']
     list_filter   = ['status', 'dispute_type', 'decision']
-    search_fields = ['title', 'claimant__email', 'defendant__email']
+    search_fields = ['title', 'claimant__email', 'defendant__email', 'agency__name']
 
     actions = ['mark_reviewing']
 

@@ -5,11 +5,12 @@ from .models import Dispute, Report
 class DisputeSerializer(serializers.ModelSerializer):
     claimant_name  = serializers.CharField(source='claimant.get_full_name', read_only=True)
     defendant_name = serializers.CharField(source='defendant.get_full_name', read_only=True)
+    agency_name    = serializers.CharField(source='agency.name', read_only=True, default=None)
 
     class Meta:
         model  = Dispute
         fields = [
-            'id', 'claimant_name', 'defendant_name',
+            'id', 'claimant_name', 'defendant_name', 'agency_name',
             'dispute_type', 'status', 'title', 'description',
             'evidence', 'defendant_response',
             'decision', 'decision_note', 'decided_at',
