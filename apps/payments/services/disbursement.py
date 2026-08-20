@@ -1,17 +1,16 @@
 """
-Decaissement des loyers -- verse le propriétaire ET les commissions d'agence
-(mandat simple ou split negocie via Network) pour une Transaction de type
-'rent' completee. Best-effort, sans reessai automatique : meme logique de
-tolerance que le virement proprietaire historique (une erreur est loggee et
-n'empeche pas le reste du traitement).
+Decaissement des loyers -- verse le propriétaire (integralement, jamais
+ampute) ET la part d'agence du frais fixe (Transaction.agency_fee_amount,
+calcule et fige a l'initiation par apps.payments.services.fees) pour une
+Transaction de type 'rent' completee. Recurrent : chaque paiement de loyer
+declenche son propre versement, l'idempotence se fait au niveau de la
+Transaction elle-meme (une seule tentative par transaction), pas au niveau
+du bail. Best-effort, sans reessai automatique -- meme logique de
+tolerance que le virement proprietaire historique.
 """
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def _agency_payout_phone(agency):
-    return agency.mtn_momo_number or agency.orange_money_number
 
 
 def _transfer_to_owner(txn, lease):
@@ -26,78 +25,42 @@ def _transfer_to_owner(txn, lease):
         logger.error(f"[VIREMENT PROPRIO] Erreur: {e}")
 
 
-def _agency_commission_plan(lease):
-    """Retourne la repartition a verser aux agences pour ce bail, sans rien
-    modifier. Priorite a la Collaboration acceptee sur le bien (split
-    negocie entre deux agences) ; a defaut, la commission simple du bail
-    revient a l'agence titulaire du mandat."""
-    from apps.network.models import Collaboration
-
-    collaboration = Collaboration.objects.filter(
-        property_id=lease.rental_property_id, status='accepted'
-    ).select_related('client_agency', 'property_agency').order_by('-updated_at').first()
-
-    if collaboration:
-        return collaboration, [
-            (collaboration.client_agency, collaboration.client_agency_amount),
-            (collaboration.property_agency, collaboration.property_agency_amount),
-        ]
-
-    if lease.agency_id and lease.agent_commission and float(lease.agent_commission) > 0:
-        return None, [(lease.agency, lease.agent_commission)]
-
-    return None, []
-
-
-def _transfer_agency_commissions(txn, lease):
-    from django.utils import timezone
+def _transfer_agency_fee_share(txn, lease):
     from .kpay import kpay_service
-    from apps.contracts.models import LeaseContract
     from apps.payments.models import PaymentSplitEntry
 
-    if lease.commission_paid:
+    if not lease.agency_id or float(txn.agency_fee_amount) <= 0:
         return
+    if PaymentSplitEntry.objects.filter(transaction=txn).exists():
+        return  # deja tente pour cette transaction precise
 
-    collaboration, plan = _agency_commission_plan(lease)
-    if collaboration and collaboration.commission_disbursed:
-        return
-    if not plan:
-        return
-
-    for agency, amount in plan:
-        entry = PaymentSplitEntry.objects.create(
-            transaction=txn, agency=agency, amount=amount, status='pending',
-        )
-        try:
-            phone = _agency_payout_phone(agency)
-            if not phone:
-                entry.status = 'failed'
-                entry.error_message = "Aucun numero mobile money configure pour cette agence"
-                entry.save(update_fields=['status', 'error_message'])
-                continue
-
-            result = kpay_service.disburse(
-                phone=phone, amount=int(amount), reference=f"AGENCY-{agency.id}-{txn.reference}"
-            )
-            if result and result.get('success'):
-                entry.status = 'completed'
-                entry.disbursed_reference = result.get('reference', '')
-            else:
-                entry.status = 'failed'
-                entry.error_message = str(result.get('error', '')) if result else "Echec disburse"
-            entry.save(update_fields=['status', 'disbursed_reference', 'error_message'])
-        except Exception as e:
-            logger.error(f"[VIREMENT AGENCE] Erreur pour {agency.id}: {e}")
+    agency = lease.agency
+    entry = PaymentSplitEntry.objects.create(
+        transaction=txn, agency=agency, amount=txn.agency_fee_amount, status='pending',
+    )
+    try:
+        phone = agency.mtn_momo_number or agency.orange_money_number
+        if not phone:
             entry.status = 'failed'
-            entry.error_message = str(e)
+            entry.error_message = "Aucun numero mobile money configure pour cette agence"
             entry.save(update_fields=['status', 'error_message'])
+            return
 
-    if collaboration:
-        collaboration.commission_disbursed = True
-        collaboration.commission_disbursed_at = timezone.now()
-        collaboration.save(update_fields=['commission_disbursed', 'commission_disbursed_at'])
-    else:
-        LeaseContract.objects.filter(id=lease.id).update(commission_paid=True)
+        result = kpay_service.disburse(
+            phone=phone, amount=int(txn.agency_fee_amount), reference=f"AGENCY-{agency.id}-{txn.reference}"
+        )
+        if result and result.get('success'):
+            entry.status = 'completed'
+            entry.disbursed_reference = result.get('reference', '')
+        else:
+            entry.status = 'failed'
+            entry.error_message = str(result.get('error', '')) if result else "Echec disburse"
+        entry.save(update_fields=['status', 'disbursed_reference', 'error_message'])
+    except Exception as e:
+        logger.error(f"[VIREMENT AGENCE] Erreur pour {agency.id}: {e}")
+        entry.status = 'failed'
+        entry.error_message = str(e)
+        entry.save(update_fields=['status', 'error_message'])
 
 
 def process_rent_transfer(txn):
@@ -115,4 +78,4 @@ def process_rent_transfer(txn):
         return
 
     _transfer_to_owner(txn, lease)
-    _transfer_agency_commissions(txn, lease)
+    _transfer_agency_fee_share(txn, lease)

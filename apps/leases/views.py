@@ -13,7 +13,7 @@ from .serializers import (
 )
 from apps.contracts.models import LeaseContract
 from core.permissions import IsAgent
-from core.utils import success_response, error_response, calculate_platform_commission
+from core.utils import success_response, error_response
 from core.pagination import StandardResultsSetPagination
 import logging
 
@@ -62,15 +62,18 @@ class ConfirmCashPaymentView(APIView):
         except RentPayment.DoesNotExist:
             return Response(error_response("Paiement introuvable"), status=status.HTTP_404_NOT_FOUND)
 
-        commission_data = calculate_platform_commission(float(payment.amount))
+        from apps.payments.services.fees import get_rent_fee, split_rent_fee
+        fee = get_rent_fee(payment.amount)
+        platform_share, agency_share = split_rent_fee(fee)
 
         with transaction.atomic():
             payment.status             = 'paid'
             payment.confirmed_by_agent = True
             payment.confirmed_at       = timezone.now()
             payment.paid_at            = timezone.now()
-            payment.platform_fee       = commission_data['platform_commission']
-            payment.owner_amount       = commission_data['owner_amount']
+            payment.platform_fee       = platform_share
+            payment.agency_fee_amount  = agency_share
+            payment.owner_amount       = payment.amount
             payment.notes              = serializer.validated_data.get('notes', '')
             payment.save()
 

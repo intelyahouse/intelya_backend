@@ -47,6 +47,10 @@ class Transaction(models.Model):
     webhook_data       = models.JSONField(null=True, blank=True)
     related_lease_id   = models.UUIDField(null=True, blank=True, db_index=True)
     related_visit_id   = models.UUIDField(null=True, blank=True, db_index=True)
+    agency_fee_amount  = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Part figee du frais fixe de loyer revenant a l'agence, calculee a l'initiation.",
+    )
     description        = models.TextField(null=True, blank=True)
     receipt_pdf        = models.FileField(upload_to="receipts/", null=True, blank=True)
     completed_at       = models.DateTimeField(null=True, blank=True)
@@ -128,3 +132,27 @@ class PaymentSplitEntry(models.Model):
 
     def __str__(self):
         return f"{self.agency.name}: {self.amount} FCFA ({self.status})"
+
+
+class RentFeeTier(models.Model):
+    """Bareme du frais fixe ajoute au loyer selon son montant mensuel --
+    jamais un pourcentage preleve sur le loyer, qui reste integralement du
+    au proprietaire. min_rent/max_rent inclusifs ; max_rent=null = pas de
+    plafond (dernier palier ouvert)."""
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    min_rent   = models.DecimalField(max_digits=12, decimal_places=2)
+    max_rent   = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    fee_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active  = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = "Palier de Frais Loyer"
+        verbose_name_plural = "Paliers de Frais Loyer"
+        ordering = ["min_rent"]
+
+    def __str__(self):
+        haut = f"{self.max_rent:.0f}" if self.max_rent is not None else "+"
+        return f"{self.min_rent:.0f} - {haut} FCFA -> {self.fee_amount:.0f} FCFA"

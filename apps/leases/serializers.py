@@ -8,13 +8,13 @@ class RentPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model  = RentPayment
         fields = [
-            'id', 'tenant_name', 'amount', 'platform_fee',
+            'id', 'tenant_name', 'amount', 'platform_fee', 'agency_fee_amount',
             'owner_amount', 'status', 'payment_method',
             'payment_reference', 'due_date', 'paid_at',
             'confirmed_by_agent', 'period_month', 'period_year',
             'created_at'
         ]
-        read_only_fields = ['platform_fee', 'owner_amount', 'status']
+        read_only_fields = ['platform_fee', 'agency_fee_amount', 'owner_amount', 'status']
 
 
 class ConfirmCashPaymentSerializer(serializers.Serializer):

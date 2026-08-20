@@ -324,6 +324,15 @@ PLATFORM_COMMISSION_PERCENT  = 0 if FREE_MODE else config('PLATFORM_COMMISSION_P
 BOOST_ENABLED                = not FREE_MODE
 VISIT_FEE_ENABLED            = not FREE_MODE
 
+# ===== FRAIS FIXES SUR LE LOYER (remplace le pourcentage pour les loyers) =====
+# Desactive comme tout le reste tant que FREE_MODE=True. Le montant du frais
+# depend d'un bareme par palier (RentFeeTier, modifiable en admin) applique
+# sur le loyer mensuel -- jamais un pourcentage preleve sur le loyer lui-meme,
+# qui reste integralement du au proprietaire.
+RENT_SURCHARGE_ENABLED       = not FREE_MODE
+RENT_SURCHARGE_PLATFORM_PERCENT = config('RENT_SURCHARGE_PLATFORM_PERCENT', default=60, cast=float)
+RENT_SURCHARGE_AGENCY_PERCENT   = config('RENT_SURCHARGE_AGENCY_PERCENT', default=40, cast=float)
+
 PLATFORM_NAME = 'INTELYA HAVEN'
 PLATFORM_CURRENCY = 'FCFA'
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')

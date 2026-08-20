@@ -56,7 +56,18 @@ class TestGestionLocative:
         r = auth_client.get('/api/v1/leases/payments/')
         assert r.status_code == status.HTTP_200_OK
 
-    def test_payer_loyer_mtn(self, auth_client, property_obj):
+    def test_payer_loyer_mtn(self, auth_client, client_user, owner_user, agent_user, property_obj):
+        import datetime
+        from apps.contracts.models import LeaseContract
+        from apps.agents.models import AgentProfile
+        lease = LeaseContract.objects.create(
+            tenant=client_user, owner=owner_user, agent=agent_user,
+            agency=AgentProfile.objects.get(user=agent_user).agency,
+            rental_property=property_obj, monthly_rent=150000, deposit_amount=300000,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today() + datetime.timedelta(days=365),
+            payment_day=5, status='active', signed_by_tenant=True, signed_by_owner=True,
+        )
         mock = {'success': True, 'reference': 'KPAY-RENT-001', 'status': 'pending', 'ussd_code': '', 'checkout_url': ''}
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=mock):
             r = auth_client.post('/api/v1/payments/initiate/', {
@@ -64,7 +75,7 @@ class TestGestionLocative:
                 'payment_method': 'mtn',
                 'phone_number': '+237670000001',
                 'related_type': 'rent',
-                'related_id': str(property_obj.id),
+                'related_id': str(lease.id),
             })
         assert r.status_code in [200, 201]
 

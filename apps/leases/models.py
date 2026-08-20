@@ -25,6 +25,7 @@ class RentPayment(models.Model):
     tenant            = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rent_payments_made")
     amount            = models.DecimalField(max_digits=12, decimal_places=2)
     platform_fee      = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    agency_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     owner_amount      = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
     payment_method    = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, null=True, blank=True)

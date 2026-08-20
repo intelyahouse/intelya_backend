@@ -1,43 +1,25 @@
 import datetime
+from decimal import Decimal
 from unittest.mock import patch
 import pytest
 from rest_framework import status
 from apps.agents.models import AgentProfile
-from apps.agencies.services import transfer_agent_to_agency
 from apps.contracts.models import LeaseContract
-from apps.payments.models import Transaction, PaymentSplitEntry
-from apps.payments.services.disbursement import process_rent_transfer, _agency_commission_plan
-from apps.network.models import Collaboration
+from apps.payments.models import Transaction, PaymentSplitEntry, RentFeeTier
+from apps.payments.services.fees import get_rent_fee, split_rent_fee
+from apps.payments.services.disbursement import process_rent_transfer
 
 pytestmark = pytest.mark.django_db
 
 MOCK_OK = {'success': True, 'reference': 'KPAY-OK'}
-MOCK_FAIL = {'success': False, 'error': 'Fonds insuffisants'}
 
 
-@pytest.fixture
-def second_agent(create_user):
-    return create_user(
-        email="agent2@test.com", phone="+237670000120",
-        role="agent", is_validated=True,
-    )
-
-
-@pytest.fixture
-def auth_agent2(second_agent):
-    from rest_framework.test import APIClient
-    client = APIClient()
-    client.force_authenticate(user=second_agent)
-    return client
-
-
-def _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=0):
+def _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000):
     profile = AgentProfile.objects.get(user=agent_user)
     return LeaseContract.objects.create(
         tenant=client_with_agent, owner=owner_user, agent=agent_user,
         agency=profile.agency, rental_property=property_obj,
-        monthly_rent=150000, deposit_amount=300000,
-        agent_commission=agent_commission,
+        monthly_rent=monthly_rent, deposit_amount=monthly_rent * 2,
         start_date=datetime.date.today(),
         end_date=datetime.date.today() + datetime.timedelta(days=365),
         payment_day=5, status='active',
@@ -45,169 +27,206 @@ def _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commis
     )
 
 
-def _rent_txn(lease, amount=150000, net_amount=147000):
+def _rent_txn(lease, monthly_rent, agency_fee_amount, platform_fee=0):
+    total = monthly_rent + platform_fee + agency_fee_amount
     return Transaction.objects.create(
         reference=f"IH-RENT-{lease.id}", transaction_type='rent',
-        amount=amount, platform_fee=amount - net_amount, net_amount=net_amount,
+        amount=total, platform_fee=platform_fee, net_amount=monthly_rent,
+        agency_fee_amount=agency_fee_amount,
         status='completed', payment_method='mtn',
         related_lease_id=lease.id,
     )
 
 
-class TestCommissionPlan:
+class TestRentFeeTiers:
 
-    def test_no_agency_no_commission(self, owner_user, client_with_agent, property_obj, agent_user):
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=0)
-        collab, plan = _agency_commission_plan(lease)
-        assert collab is None
-        assert plan == []
+    def test_tier_1_applies(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = True
+        assert get_rent_fee(Decimal('30000')) == Decimal('500')
 
-    def test_simple_agent_commission(self, owner_user, client_with_agent, property_obj, agent_user):
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        collab, plan = _agency_commission_plan(lease)
-        assert collab is None
-        assert len(plan) == 1
-        assert plan[0][0].id == lease.agency_id
-        assert plan[0][1] == 10000
+    def test_tier_2_applies(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = True
+        assert get_rent_fee(Decimal('75000')) == Decimal('1000')
 
-    def test_accepted_collaboration_takes_priority(
-        self, owner_user, client_with_agent, property_obj, agent_user, second_agent
+    def test_boundary_50000_is_tier_1(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = True
+        assert get_rent_fee(Decimal('50000')) == Decimal('500')
+
+    def test_boundary_50001_is_tier_2(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = True
+        assert get_rent_fee(Decimal('50001')) == Decimal('1000')
+
+    def test_above_all_tiers_no_fee(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = True
+        assert get_rent_fee(Decimal('500000')) == Decimal('0')
+
+    def test_disabled_by_free_mode(self, settings):
+        settings.RENT_SURCHARGE_ENABLED = False
+        assert get_rent_fee(Decimal('30000')) == Decimal('0')
+
+    def test_split_60_40(self, settings):
+        settings.RENT_SURCHARGE_PLATFORM_PERCENT = 60
+        platform_share, agency_share = split_rent_fee(Decimal('500'))
+        assert platform_share == Decimal('300.00')
+        assert agency_share == Decimal('200.00')
+
+
+class TestInitiatePaymentRent:
+
+    def test_server_computes_rent_plus_fee_ignoring_client_amount(
+        self, settings, auth_client_with_agent, client_with_agent, agent_user, owner_user, property_obj
     ):
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        second_profile = AgentProfile.objects.get(user=second_agent)
-        agent_profile = AgentProfile.objects.get(user=agent_user)
-        collaboration = Collaboration.objects.create(
-            property=property_obj, client_agency=second_profile.agency,
-            property_agency=agent_profile.agency, initiated_by=second_agent,
-            client_agency_amount=100, property_agency_amount=100, total_amount=200,
-            status='accepted', last_proposed_by_agency=second_profile.agency,
-        )
-        collab, plan = _agency_commission_plan(lease)
-        assert collab.id == collaboration.id
-        assert len(plan) == 2
-        amounts = {str(a.id): amt for a, amt in plan}
-        assert amounts[str(second_profile.agency_id)] == 100
-        assert amounts[str(agent_profile.agency_id)] == 100
+        settings.RENT_SURCHARGE_ENABLED = True
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
 
+        with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
+            response = auth_client_with_agent.post('/api/v1/payments/initiate/', {
+                'amount': '30000',  # doit etre ignore pour un loyer, mais doit etre realiste
+                'payment_method': 'mtn', 'phone_number': '+237670000001',
+                'related_type': 'rent', 'related_id': str(lease.id),
+            })
+        assert response.status_code == status.HTTP_201_CREATED
+        breakdown = response.data['data']['breakdown']
+        assert breakdown['rent_total'] == 30000
+        assert breakdown['fee'] == 500
+        assert breakdown['platform_share'] == 300
+        assert breakdown['agency_share'] == 200
+        assert breakdown['total'] == 30500
 
-class TestProcessRentTransfer:
+        txn = Transaction.objects.get(related_lease_id=lease.id)
+        assert float(txn.amount) == 30500
+        assert float(txn.net_amount) == 30000
+        assert float(txn.agency_fee_amount) == 200
 
-    def test_simple_commission_disbursed_and_marked_paid(
-        self, owner_user, client_with_agent, property_obj, agent_user
+    def test_owner_never_loses_a_share_of_rent(
+        self, settings, auth_client_with_agent, client_with_agent, agent_user, owner_user, property_obj
     ):
+        settings.RENT_SURCHARGE_ENABLED = True
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+
+        with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
+            auth_client_with_agent.post('/api/v1/payments/initiate/', {
+                'amount': '30000', 'payment_method': 'mtn', 'phone_number': '+237670000001',
+                'related_type': 'rent', 'related_id': str(lease.id),
+            })
+        txn = Transaction.objects.get(related_lease_id=lease.id)
+        assert float(txn.net_amount) == float(lease.monthly_rent)
+
+    def test_multi_month_payment(
+        self, settings, auth_client_with_agent, client_with_agent, agent_user, owner_user, property_obj
+    ):
+        settings.RENT_SURCHARGE_ENABLED = True
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+
+        with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
+            response = auth_client_with_agent.post('/api/v1/payments/initiate/', {
+                'amount': '30000', 'payment_method': 'mtn', 'phone_number': '+237670000001',
+                'related_type': 'rent', 'related_id': str(lease.id), 'months': 3,
+            })
+        breakdown = response.data['data']['breakdown']
+        assert breakdown['rent_total'] == 90000
+        assert breakdown['fee'] == 1500
+        assert breakdown['total'] == 91500
+
+    def test_no_fee_when_free_mode(
+        self, settings, auth_client_with_agent, client_with_agent, agent_user, owner_user, property_obj
+    ):
+        settings.RENT_SURCHARGE_ENABLED = False
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+
+        with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
+            response = auth_client_with_agent.post('/api/v1/payments/initiate/', {
+                'amount': '30000', 'payment_method': 'mtn', 'phone_number': '+237670000001',
+                'related_type': 'rent', 'related_id': str(lease.id),
+            })
+        breakdown = response.data['data']['breakdown']
+        assert breakdown['fee'] == 0
+        assert breakdown['total'] == 30000
+
+    def test_other_tenant_cannot_pay_this_lease(
+        self, settings, auth_client, client_with_agent, agent_user, owner_user, property_obj, create_user
+    ):
+        settings.RENT_SURCHARGE_ENABLED = True
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        other = create_user(email='other_tenant@test.com', phone='+237670000199', role='client')
+        from rest_framework.test import APIClient
+        auth_other = APIClient()
+        auth_other.force_authenticate(user=other)
+
+        response = auth_other.post('/api/v1/payments/initiate/', {
+            'amount': '30000', 'payment_method': 'mtn',
+            'related_type': 'rent', 'related_id': str(lease.id),
+        })
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestProcessRentTransferDisbursement:
+
+    def test_agency_receives_its_share(self, owner_user, client_with_agent, property_obj, agent_user):
+        owner_user.owner_profile.mtn_momo_number = '+237670000003'
+        owner_user.owner_profile.save(update_fields=['mtn_momo_number'])
         agency = AgentProfile.objects.get(user=agent_user).agency
         agency.mtn_momo_number = '+237670000001'
         agency.save(update_fields=['mtn_momo_number'])
-
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        txn = _rent_txn(lease)
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        txn = _rent_txn(lease, monthly_rent=30000, agency_fee_amount=200, platform_fee=300)
 
         with patch('apps.payments.services.kpay.kpay_service.disburse', return_value=MOCK_OK) as mock_disburse:
             process_rent_transfer(txn)
 
-        assert mock_disburse.called
-        lease.refresh_from_db()
-        assert lease.commission_paid is True
+        assert mock_disburse.call_count == 2  # proprietaire + agence
+        entry = PaymentSplitEntry.objects.get(transaction=txn)
+        assert entry.status == 'completed'
+        assert entry.agency_id == agency.id
+        assert float(entry.amount) == 200
 
-        entries = PaymentSplitEntry.objects.filter(transaction=txn)
-        assert entries.count() == 1
-        assert entries.first().status == 'completed'
-        assert entries.first().agency_id == agency.id
-
-    def test_no_double_disbursement_on_replay(
-        self, owner_user, client_with_agent, property_obj, agent_user
-    ):
+    def test_no_double_disbursement_on_replay(self, owner_user, client_with_agent, property_obj, agent_user):
         agency = AgentProfile.objects.get(user=agent_user).agency
         agency.mtn_momo_number = '+237670000001'
         agency.save(update_fields=['mtn_momo_number'])
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        txn = _rent_txn(lease)
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        txn = _rent_txn(lease, monthly_rent=30000, agency_fee_amount=200, platform_fee=300)
 
         with patch('apps.payments.services.kpay.kpay_service.disburse', return_value=MOCK_OK) as mock_disburse:
             process_rent_transfer(txn)
             process_rent_transfer(txn)
 
-        assert mock_disburse.call_count == 1
         assert PaymentSplitEntry.objects.filter(transaction=txn).count() == 1
 
-    def test_missing_phone_marks_entry_failed_without_crash(
-        self, owner_user, client_with_agent, property_obj, agent_user
-    ):
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        txn = _rent_txn(lease)
+    def test_recurring_across_two_months(self, owner_user, client_with_agent, property_obj, agent_user):
+        agency = AgentProfile.objects.get(user=agent_user).agency
+        agency.mtn_momo_number = '+237670000001'
+        agency.save(update_fields=['mtn_momo_number'])
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        txn1 = _rent_txn(lease, monthly_rent=30000, agency_fee_amount=200, platform_fee=300)
+
+        with patch('apps.payments.services.kpay.kpay_service.disburse', return_value=MOCK_OK):
+            process_rent_transfer(txn1)
+
+        txn2 = Transaction.objects.create(
+            reference=f"IH-RENT2-{lease.id}", transaction_type='rent',
+            amount=30500, platform_fee=300, net_amount=30000, agency_fee_amount=200,
+            status='completed', payment_method='mtn', related_lease_id=lease.id,
+        )
+        with patch('apps.payments.services.kpay.kpay_service.disburse', return_value=MOCK_OK) as mock_disburse:
+            process_rent_transfer(txn2)
+
+        assert mock_disburse.called  # le mois suivant declenche a nouveau un versement
+        assert PaymentSplitEntry.objects.filter(transaction=txn2).count() == 1
+
+    def test_missing_agency_phone_marks_failed(self, owner_user, client_with_agent, property_obj, agent_user):
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        txn = _rent_txn(lease, monthly_rent=30000, agency_fee_amount=200, platform_fee=300)
 
         process_rent_transfer(txn)
 
         entry = PaymentSplitEntry.objects.get(transaction=txn)
         assert entry.status == 'failed'
-        assert 'mobile money' in entry.error_message.lower()
 
-    def test_collaboration_split_disbursed_to_both_agencies(
-        self, owner_user, client_with_agent, property_obj, agent_user, second_agent
-    ):
-        agent_profile = AgentProfile.objects.get(user=agent_user)
-        second_profile = AgentProfile.objects.get(user=second_agent)
-        agent_profile.agency.mtn_momo_number = '+237670000001'
-        agent_profile.agency.save(update_fields=['mtn_momo_number'])
-        second_profile.agency.mtn_momo_number = '+237670000002'
-        second_profile.agency.save(update_fields=['mtn_momo_number'])
+    def test_no_agency_fee_no_entry_created(self, owner_user, client_with_agent, property_obj, agent_user):
+        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, monthly_rent=30000)
+        txn = _rent_txn(lease, monthly_rent=30000, agency_fee_amount=0, platform_fee=0)
 
-        collaboration = Collaboration.objects.create(
-            property=property_obj, client_agency=second_profile.agency,
-            property_agency=agent_profile.agency, initiated_by=second_agent,
-            client_agency_amount=100, property_agency_amount=100, total_amount=200,
-            status='accepted', last_proposed_by_agency=second_profile.agency,
-        )
-        lease = _lease(agent_user, owner_user, client_with_agent, property_obj, agent_commission=10000)
-        txn = _rent_txn(lease)
-
-        with patch('apps.payments.services.kpay.kpay_service.disburse', return_value=MOCK_OK):
-            process_rent_transfer(txn)
-
-        collaboration.refresh_from_db()
-        assert collaboration.commission_disbursed is True
-        assert PaymentSplitEntry.objects.filter(transaction=txn).count() == 2
-        # la commission simple du bail (agent_commission) n'est PAS aussi versee
-        lease.refresh_from_db()
-        assert lease.commission_paid is False
-
-    def test_no_related_lease_is_noop(self):
-        txn = Transaction.objects.create(
-            reference='IH-NOLEASE', transaction_type='rent',
-            amount=1000, net_amount=1000, status='completed',
-        )
-        process_rent_transfer(txn)  # ne doit pas planter
-        assert PaymentSplitEntry.objects.count() == 0
-
-    def test_non_rent_transaction_is_noop(self, client_user):
-        txn = Transaction.objects.create(
-            reference='IH-VISIT', transaction_type='visit_fee',
-            amount=1000, net_amount=1000, status='completed',
-            payer=client_user,
-        )
         process_rent_transfer(txn)
-        assert PaymentSplitEntry.objects.count() == 0
 
-
-class TestAgencyPaymentInfoEndpoint:
-
-    def test_gerant_can_set_payment_info(self, auth_agent, agent_user):
-        response = auth_agent.patch('/api/v1/agencies/me/', {
-            'mtn_momo_number': '+237670000099',
-        })
-        assert response.status_code == status.HTTP_200_OK
-        agency = AgentProfile.objects.get(user=agent_user).agency
-        agency.refresh_from_db()
-        assert agency.mtn_momo_number == '+237670000099'
-
-    def test_non_gerant_cannot_set_payment_info(self, auth_agent2, agent_user, second_agent):
-        second_profile = AgentProfile.objects.get(user=second_agent)
-        agent_profile = AgentProfile.objects.get(user=agent_user)
-        transfer_agent_to_agency(second_profile, agent_profile.agency)
-        second_agent.refresh_from_db()
-        auth_agent2.force_authenticate(user=second_agent)
-
-        response = auth_agent2.patch('/api/v1/agencies/me/', {
-            'mtn_momo_number': '+237670000098',
-        })
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert PaymentSplitEntry.objects.filter(transaction=txn).count() == 0

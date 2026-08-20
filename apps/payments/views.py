@@ -14,6 +14,7 @@ from .serializers import TransactionSerializer, InitiatePaymentSerializer
 from .services.kpay import kpay_service
 from .services.bank import bank_service
 from .services.disbursement import process_rent_transfer
+from .services.fees import get_rent_fee, split_rent_fee
 from core.utils import success_response, error_response, generate_transaction_reference, calculate_platform_commission
 from core.throttles import PaymentThrottle
 from core.permissions import IsAdmin
@@ -39,7 +40,9 @@ class InitiatePaymentView(APIView):
         related_type = data['related_type']
         related_id   = data['related_id']
 
-        # Vérifier montant minimum
+        # Vérifier montant minimum (montant soumis par le client — sera
+        # recalcule par le serveur pour visite/loyer, mais reste un
+        # garde-fou contre une soumission absurde des le depart)
         if amount < 100:
             return Response(error_response("Montant minimum: 100 FCFA"), status=status.HTTP_400_BAD_REQUEST)
 
@@ -57,6 +60,9 @@ class InitiatePaymentView(APIView):
 
         receiver = None
         txn_type = related_type
+        agency_fee_amount = 0
+        rent_breakdown = None
+
         if related_type == 'visit':
             txn_type = 'visit_fee'
             try:
@@ -67,8 +73,37 @@ class InitiatePaymentView(APIView):
                 return Response(error_response("Visite introuvable"), status=status.HTTP_404_NOT_FOUND)
             receiver = visit.agent
             amount = float(visit.visit_fee)
+            commission_data = calculate_platform_commission(amount)
+            platform_fee, net_amount = commission_data['platform_commission'], commission_data['owner_amount']
 
-        commission_data = calculate_platform_commission(amount)
+        elif related_type == 'rent':
+            txn_type = 'rent'
+            from apps.contracts.models import LeaseContract
+            try:
+                lease = LeaseContract.objects.select_related('owner').get(
+                    id=related_id, tenant=request.user
+                )
+            except LeaseContract.DoesNotExist:
+                return Response(error_response("Bail introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+            months = max(1, int(data.get('months', 1)))
+            monthly_rent = float(lease.monthly_rent)
+            fee = float(get_rent_fee(lease.monthly_rent)) * months
+            platform_fee, agency_fee_amount = split_rent_fee(fee)
+            net_amount = monthly_rent * months
+            amount = net_amount + fee
+            receiver = lease.owner
+            rent_breakdown = {
+                'monthly_rent': monthly_rent, 'months': months,
+                'rent_total': net_amount, 'fee': fee,
+                'platform_share': float(platform_fee), 'agency_share': float(agency_fee_amount),
+                'total': amount,
+            }
+
+        else:
+            commission_data = calculate_platform_commission(amount)
+            platform_fee, net_amount = commission_data['platform_commission'], commission_data['owner_amount']
+
         reference = generate_transaction_reference()
 
         # TRANSACTION ATOMIQUE — tout ou rien
@@ -80,8 +115,9 @@ class InitiatePaymentView(APIView):
                     receiver=receiver,
                     transaction_type=txn_type,
                     amount=amount,
-                    platform_fee=commission_data['platform_commission'],
-                    net_amount=commission_data['owner_amount'],
+                    platform_fee=platform_fee,
+                    net_amount=net_amount,
+                    agency_fee_amount=agency_fee_amount,
                     currency='FCFA',
                     status='pending',
                     payment_method=method,
@@ -123,11 +159,14 @@ class InitiatePaymentView(APIView):
         from core.audit import log_payment_initiated
         log_payment_initiated(request.user, reference, amount, method, request)
 
-        return Response(success_response(
-            {'transaction_id': str(txn.id), 'reference': reference, 'status': txn.status,
-             'ussd_code': payment_result.get('ussd_code', '') if payment_result else ''},
-            "Paiement initié ✅"
-        ), status=status.HTTP_201_CREATED)
+        response_data = {
+            'transaction_id': str(txn.id), 'reference': reference, 'status': txn.status,
+            'ussd_code': payment_result.get('ussd_code', '') if payment_result else ''
+        }
+        if rent_breakdown:
+            response_data['breakdown'] = rent_breakdown
+
+        return Response(success_response(response_data, "Paiement initié ✅"), status=status.HTTP_201_CREATED)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
