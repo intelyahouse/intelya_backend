@@ -12,7 +12,7 @@ from .serializers import (
     DebtActionSerializer, ComplaintSerializer, CreateComplaintSerializer
 )
 from apps.contracts.models import LeaseContract
-from core.permissions import IsAgent
+from core.permissions import IsAgent, IsClient
 from core.utils import success_response, error_response
 from core.pagination import StandardResultsSetPagination
 import logging
@@ -214,3 +214,115 @@ class ResolveComplaintView(APIView):
         complaint.save()
 
         return Response(success_response(ComplaintSerializer(complaint).data, "Plainte résolue ✅"))
+
+
+class TenantDashboardView(APIView):
+    """Tableau de bord locataire — statut et actions disponibles"""
+    permission_classes = [IsAuthenticated, IsClient]
+
+    @extend_schema(tags=['Leases'], summary="Mon tableau de bord locataire")
+    def get(self, request):
+        from apps.agents.models import ClientAgentRelation
+        user = request.user
+
+        relation = ClientAgentRelation.objects.filter(
+            client=user, is_active=True
+        ).select_related('agent', 'agency').first()
+
+        lease = LeaseContract.objects.filter(
+            tenant=user, status='active'
+        ).select_related('rental_property', 'owner', 'agent').first()
+
+        due_payment = None
+        renewal_available = False
+        if lease:
+            due_payment = RentPayment.objects.filter(
+                lease=lease, status__in=['pending', 'late']
+            ).order_by('due_date').first()
+            renewal_available = timezone.now().date() >= lease.get_renewal_notification_date()
+
+        status_data = {
+            'has_agency': bool(relation),
+            'agency_name': relation.agency.name if relation and relation.agency else None,
+            'agent_name': relation.agent.get_full_name() if relation else None,
+            'has_active_lease': bool(lease),
+            'property_title': lease.rental_property.title if lease else None,
+            'monthly_rent': float(lease.monthly_rent) if lease else None,
+            'lease_end_date': lease.end_date if lease else None,
+            'is_blocked': user.is_blocked,
+        }
+
+        actions = [
+            {'action': 'search_properties', 'label': 'Rechercher un logement', 'available': True, 'reason': None},
+            {'action': 'choose_agency', 'label': 'Choisir une agence', 'available': not relation,
+             'reason': None if not relation else "Vous êtes déjà rattaché à une agence"},
+            {'action': 'contact_agency', 'label': 'Contacter mon agence', 'available': bool(relation),
+             'reason': None if relation else "Choisissez d'abord une agence"},
+            {'action': 'pay_rent', 'label': 'Payer mon loyer', 'available': bool(due_payment),
+             'reason': None if due_payment else ("Aucun bail actif" if not lease else "Aucun paiement en attente")},
+            {'action': 'view_payments', 'label': 'Voir mes paiements', 'available': bool(lease),
+             'reason': None if lease else "Aucun bail actif"},
+            {'action': 'submit_complaint', 'label': 'Signaler un problème', 'available': bool(lease),
+             'reason': None if lease else "Aucun bail actif"},
+            {'action': 'request_renewal', 'label': 'Demander le renouvellement', 'available': renewal_available,
+             'reason': None if renewal_available else "Pas encore dans la période de renouvellement"},
+            {'action': 'view_complaints', 'label': 'Voir mes plaintes', 'available': True, 'reason': None},
+            {'action': 'view_disputes', 'label': 'Voir mes litiges', 'available': True, 'reason': None},
+        ]
+
+        return Response(success_response({'status': status_data, 'available_actions': actions}))
+
+
+class RentPaymentReceiptView(APIView):
+    """Recu PDF brande d'un paiement de loyer paye -- telechargeable par le
+    locataire, le proprietaire, ou un agent de l'agence gestionnaire."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Leases'], summary="Télécharger le reçu PDF d'un paiement")
+    def get(self, request, payment_id):
+        from django.http import HttpResponse
+        from core.pdf import build_pdf
+        from core.utils import format_fcfa
+
+        try:
+            payment = RentPayment.objects.select_related(
+                'tenant', 'lease__owner', 'lease__rental_property', 'lease__agency'
+            ).get(id=payment_id, status='paid')
+        except RentPayment.DoesNotExist:
+            return Response(error_response("Reçu introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        agency_id = getattr(getattr(user, 'agent_profile', None), 'agency_id', None)
+        allowed = (
+            payment.tenant_id == user.id or
+            payment.lease.owner_id == user.id or
+            (agency_id and payment.lease.agency_id == agency_id)
+        )
+        if not allowed:
+            return Response(error_response("Accès non autorisé à ce reçu"), status=status.HTTP_403_FORBIDDEN)
+
+        lease = payment.lease
+        sections = [
+            (None, [
+                ["Locataire", payment.tenant.get_full_name()],
+                ["Bien", lease.rental_property.title],
+                ["Propriétaire", lease.owner.get_full_name()],
+                ["Période", f"{payment.period_month:02d}/{payment.period_year}"],
+                ["Date de paiement", str(payment.paid_at.date()) if payment.paid_at else "-"],
+                ["Méthode", payment.get_payment_method_display() if payment.payment_method else "-"],
+                ["Référence", payment.payment_reference or str(payment.id)],
+            ]),
+            ("Répartition", [
+                ["Loyer", format_fcfa(payment.amount)],
+                ["Frais plateforme", format_fcfa(payment.platform_fee)],
+                ["Commission agence", format_fcfa(payment.agency_fee_amount)],
+                ["Total payé", format_fcfa(
+                    float(payment.amount) + float(payment.platform_fee) + float(payment.agency_fee_amount)
+                )],
+            ]),
+        ]
+        pdf_bytes = build_pdf("Reçu de paiement de loyer", str(payment.id), sections)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="recu-loyer-{payment.period_month}-{payment.period_year}.pdf"'
+        return response

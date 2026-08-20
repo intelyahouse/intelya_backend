@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import CreateLeaseView, SignLeaseView, MyLeasesView
+from .views import CreateLeaseView, SignLeaseView, MyLeasesView, LeaseContractPDFView
 
 urlpatterns = [
     path('leases/', MyLeasesView.as_view(), name='my-leases'),
     path('leases/create/', CreateLeaseView.as_view(), name='create-lease'),
     path('leases/<uuid:lease_id>/sign/', SignLeaseView.as_view(), name='sign-lease'),
+    path('leases/<uuid:lease_id>/pdf/', LeaseContractPDFView.as_view(), name='lease-pdf'),
 ]

@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     InitiatePaymentView, CampayWebhookView, KPayWebhookView,
-    MyTransactionsView, CheckPaymentStatusView
+    MyTransactionsView, CheckPaymentStatusView, TransactionReceiptView
 )
 
 urlpatterns = [
@@ -10,4 +10,5 @@ urlpatterns = [
     path('webhook/kpay/', KPayWebhookView.as_view(), name='webhook-kpay'),
     path('history/', MyTransactionsView.as_view(), name='my-transactions'),
     path('status/<str:reference>/', CheckPaymentStatusView.as_view(), name='payment-status'),
+    path('<uuid:transaction_id>/receipt/', TransactionReceiptView.as_view(), name='transaction-receipt'),
 ]

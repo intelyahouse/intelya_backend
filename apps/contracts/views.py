@@ -122,3 +122,58 @@ class MyLeasesView(APIView):
 
         serializer = LeaseContractSerializer(leases, many=True)
         return Response(success_response(serializer.data))
+
+
+class LeaseContractPDFView(APIView):
+    """Document PDF brande du contrat de bail -- telechargeable par le
+    locataire, le proprietaire, ou un agent de l'agence gestionnaire."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Contracts'], summary="Télécharger le PDF d'un contrat de bail")
+    def get(self, request, lease_id):
+        from django.http import HttpResponse
+        from core.pdf import build_pdf
+        from core.utils import format_fcfa
+
+        try:
+            lease = LeaseContract.objects.select_related('tenant', 'owner', 'agent', 'rental_property').get(id=lease_id)
+        except LeaseContract.DoesNotExist:
+            return Response(error_response("Bail introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        agency_id = getattr(getattr(user, 'agent_profile', None), 'agency_id', None)
+        allowed = (
+            lease.tenant_id == user.id or
+            lease.owner_id == user.id or
+            (agency_id and lease.agency_id == agency_id)
+        )
+        if not allowed:
+            return Response(error_response("Accès non autorisé à ce contrat"), status=status.HTTP_403_FORBIDDEN)
+
+        sections = [
+            ("Parties", [
+                ["Locataire", lease.tenant.get_full_name()],
+                ["Propriétaire", lease.owner.get_full_name()],
+                ["Agent responsable", lease.agent.get_full_name() if lease.agent else "-"],
+            ]),
+            ("Bien loué", [
+                ["Bien", lease.rental_property.title],
+                ["Ville", lease.rental_property.city],
+                ["Quartier", lease.rental_property.neighborhood],
+            ]),
+            ("Conditions", [
+                ["Loyer mensuel", format_fcfa(lease.monthly_rent)],
+                ["Caution", format_fcfa(lease.deposit_amount)],
+                ["Date de début", str(lease.start_date)],
+                ["Date de fin", str(lease.end_date)],
+                ["Jour de paiement", str(lease.payment_day)],
+                ["Statut", lease.get_status_display()],
+                ["Signé par le locataire", "Oui" if lease.signed_by_tenant else "Non"],
+                ["Signé par le propriétaire", "Oui" if lease.signed_by_owner else "Non"],
+            ]),
+        ]
+        pdf_bytes = build_pdf("Contrat de bail", str(lease.id), sections)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="bail-{lease.id}.pdf"'
+        return response

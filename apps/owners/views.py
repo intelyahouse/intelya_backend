@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema
 from .models import OwnerProfile
 from .serializers import OwnerProfileSerializer, OwnerBankAccountSerializer
 from apps.agents.models import OwnerAgentRelation, AgentProfile
-from core.permissions import IsOwner, IsAdmin
+from core.permissions import IsOwner, IsOwnerRole, IsAdmin
 from core.utils import success_response, error_response
 from django.utils import timezone
 
@@ -161,3 +161,99 @@ class OwnerAgentRelationView(APIView):
         return Response(success_response(
             message="Contrat résilié. Préavis de 30 jours en cours."
         ))
+
+
+class OwnerDashboardView(APIView):
+    """Tableau de bord proprietaire — statut et actions disponibles.
+    Accessible meme non valide (IsOwnerRole, pas IsOwner) : c'est justement
+    ici qu'un proprietaire en attente doit voir qu'il est en attente."""
+    permission_classes = [IsAuthenticated, IsOwnerRole]
+
+    @extend_schema(tags=['Owners'], summary="Mon tableau de bord propriétaire")
+    def get(self, request):
+        from apps.properties.models import Property
+        user = request.user
+        profile = OwnerProfile.objects.filter(user=user).first()
+
+        properties = Property.objects.filter(owner=user)
+        total_properties = properties.count()
+
+        relation = OwnerAgentRelation.objects.filter(
+            owner=user, status='active'
+        ).select_related('agent__agent_profile__agency').first()
+        agency = None
+        if relation and hasattr(relation.agent, 'agent_profile'):
+            agency = relation.agent.agent_profile.agency
+
+        status_data = {
+            'is_validated': user.is_validated,
+            'total_properties': total_properties,
+            'available_properties': properties.filter(status='available').count(),
+            'rented_properties': properties.filter(status='rented').count(),
+            'manages_own_tenants': profile.manages_own_tenants if profile else True,
+            'has_active_agency': bool(relation),
+            'agency_name': agency.name if agency else None,
+            'agent_name': relation.agent.get_full_name() if relation else None,
+        }
+
+        actions = [
+            {'action': 'add_property', 'label': 'Ajouter un bien', 'available': user.is_validated,
+             'reason': None if user.is_validated else "Compte en attente de validation"},
+            {'action': 'view_properties', 'label': 'Voir mes biens', 'available': True, 'reason': None},
+            {'action': 'view_leases', 'label': 'Voir mes locations', 'available': True, 'reason': None},
+            {'action': 'view_payments', 'label': 'Suivre mes paiements', 'available': True, 'reason': None},
+            {'action': 'choose_agency', 'label': 'Confier mes biens à une agence', 'available': not bool(relation),
+             'reason': None if not relation else "Vous avez déjà une agence active"},
+            {'action': 'contact_agency', 'label': 'Communiquer avec mon agence', 'available': bool(relation),
+             'reason': None if relation else "Aucune agence active"},
+            {'action': 'terminate_mandate', 'label': 'Résilier le mandat actuel', 'available': bool(relation),
+             'reason': None if relation else "Aucun mandat actif"},
+            {'action': 'view_disputes', 'label': 'Voir mes litiges', 'available': True, 'reason': None},
+        ]
+
+        return Response(success_response({'status': status_data, 'available_actions': actions}))
+
+
+class MandatePDFView(APIView):
+    """Document PDF brande du mandat de gestion (OwnerAgentRelation) --
+    telechargeable par le proprietaire ou l'agent concerne."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Owners'], summary="Télécharger le PDF d'un mandat de gestion")
+    def get(self, request, relation_id):
+        from django.http import HttpResponse
+        from core.pdf import build_pdf
+
+        try:
+            relation = OwnerAgentRelation.objects.select_related(
+                'owner', 'agent__agent_profile__agency'
+            ).get(id=relation_id)
+        except OwnerAgentRelation.DoesNotExist:
+            return Response(error_response("Mandat introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        if relation.owner_id != user.id and relation.agent_id != user.id:
+            return Response(error_response("Accès non autorisé à ce mandat"), status=status.HTTP_403_FORBIDDEN)
+
+        agency = relation.agent.agent_profile.agency if hasattr(relation.agent, 'agent_profile') else None
+        sections = [
+            (None, [
+                ["Propriétaire", relation.owner.get_full_name()],
+                ["Agence gestionnaire", agency.name if agency else "-"],
+                ["Agent responsable", relation.agent.get_full_name()],
+                ["Statut", relation.get_status_display()],
+                ["Date de début", str(relation.contract_start)],
+                ["Date de fin", str(relation.contract_end) if relation.contract_end else "Durée indéterminée"],
+            ]),
+        ]
+        if relation.status == 'terminated':
+            sections.append(("Résiliation", [
+                ["Date", str(relation.terminated_at.date()) if relation.terminated_at else "-"],
+                ["Motif", relation.termination_reason or "-"],
+            ]))
+
+        pdf_bytes = build_pdf("Mandat de gestion immobilière", str(relation.id), sections)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="mandat-{relation.id}.pdf"'
+        return response

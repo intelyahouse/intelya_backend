@@ -271,6 +271,57 @@ class CheckPaymentStatusView(APIView):
         return Response(success_response(TransactionSerializer(txn).data))
 
 
+class TransactionReceiptView(APIView):
+    """Recu PDF brande d'une transaction completee -- tout type confondu
+    (loyer, visite, commission, boost, caution). Accessible au payeur, au
+    beneficiaire, et -- pour un loyer -- a tout agent de l'agence gestionnaire."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Payments'], summary="Télécharger le reçu PDF d'une transaction")
+    def get(self, request, transaction_id):
+        from django.http import HttpResponse
+        from core.pdf import build_pdf
+        from core.utils import format_fcfa
+
+        try:
+            txn = Transaction.objects.select_related('payer', 'receiver').get(
+                id=transaction_id, status='completed'
+            )
+        except Transaction.DoesNotExist:
+            return Response(error_response("Reçu introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        allowed = txn.payer_id == user.id or txn.receiver_id == user.id
+        if not allowed and txn.related_lease_id:
+            from apps.contracts.models import LeaseContract
+            agency_id = getattr(getattr(user, 'agent_profile', None), 'agency_id', None)
+            allowed = LeaseContract.objects.filter(
+                id=txn.related_lease_id, agency_id=agency_id
+            ).exists() if agency_id else False
+        if not allowed:
+            return Response(error_response("Accès non autorisé à ce reçu"), status=status.HTTP_403_FORBIDDEN)
+
+        sections = [
+            (None, [
+                ["Type", txn.get_transaction_type_display()],
+                ["Payeur", txn.payer.get_full_name() if txn.payer else "-"],
+                ["Bénéficiaire", txn.receiver.get_full_name() if txn.receiver else "-"],
+                ["Méthode", txn.get_payment_method_display() if txn.payment_method else "-"],
+                ["Date", str(txn.completed_at.date()) if txn.completed_at else "-"],
+            ]),
+            ("Montants", [
+                ["Montant total", format_fcfa(txn.amount)],
+                ["Frais plateforme", format_fcfa(txn.platform_fee)],
+                ["Montant net", format_fcfa(txn.net_amount)],
+            ]),
+        ]
+        pdf_bytes = build_pdf("Reçu de transaction", txn.reference, sections)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="recu-{txn.reference}.pdf"'
+        return response
+
+
 class KPayWebhookView(APIView):
     """
     Webhook K-Pay — appelé automatiquement quand un paiement est complété

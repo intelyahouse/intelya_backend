@@ -29,8 +29,29 @@ def _is_gerant(user, agency):
     return agency.owner_agent_id == user.id
 
 
+def _agency_available_actions(request, agency, is_gerant):
+    has_payment_info = bool(agency.mtn_momo_number or agency.orange_money_number or agency.bank_account_number)
+    return [
+        {'action': 'manage_agents', 'label': 'Gérer mes agents', 'available': is_gerant,
+         'reason': None if is_gerant else "Réservé au gérant de l'agence"},
+        {'action': 'invite_agent', 'label': 'Inviter un agent', 'available': is_gerant,
+         'reason': None if is_gerant else "Réservé au gérant de l'agence"},
+        {'action': 'leave_agency', 'label': "Quitter l'agence", 'available': not is_gerant,
+         'reason': None if not is_gerant else "Le gérant ne peut pas quitter sa propre agence"},
+        {'action': 'manage_clients', 'label': 'Gérer mes clients', 'available': True},
+        {'action': 'manage_properties', 'label': 'Gérer mes biens', 'available': True},
+        {'action': 'manage_owner_mandates', 'label': 'Gérer mes mandats propriétaires', 'available': True},
+        {'action': 'network_collaboration', 'label': 'Collaborer via le Network', 'available': True},
+        {'action': 'view_reputation', 'label': 'Voir la réputation de mon agence', 'available': True},
+        {'action': 'view_disputes', 'label': "Voir les litiges de l'agence",
+         'available': is_gerant, 'reason': None if is_gerant else "Réservé au gérant de l'agence"},
+        {'action': 'configure_payment_info', 'label': "Configurer les coordonnées de paiement de l'agence",
+         'available': is_gerant, 'reason': None if is_gerant else "Réservé au gérant de l'agence"},
+    ], has_payment_info
+
+
 class AgencyMeView(APIView):
-    """Mon agence — details et membres"""
+    """Mon agence — details, membres, statut et actions disponibles"""
     permission_classes = [IsAuthenticated, IsAgent]
 
     @extend_schema(tags=['Agencies'], summary="Mon agence")
@@ -38,7 +59,15 @@ class AgencyMeView(APIView):
         profile = _get_agent_profile(request)
         if not profile:
             return Response(error_response("Profil agent introuvable"), status=status.HTTP_404_NOT_FOUND)
-        return Response(success_response(AgencySerializer(profile.agency).data))
+        agency = profile.agency
+        is_gerant = _is_gerant(request.user, agency)
+        actions, has_payment_info = _agency_available_actions(request, agency, is_gerant)
+
+        data = AgencySerializer(agency).data
+        data['is_gerant'] = is_gerant
+        data['has_payment_info'] = has_payment_info
+        data['available_actions'] = actions
+        return Response(success_response(data))
 
     @extend_schema(tags=['Agencies'], summary="Mettre a jour les coordonnees de paiement de l'agence")
     def patch(self, request):
