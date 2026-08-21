@@ -57,7 +57,14 @@ class TestScenarioClientComplet:
         })
         assert r.status_code in [200, 201]
 
-    def test_07_payer_visite(self, auth_client_with_agent, property_obj):
+    def test_07_payer_visite(self, auth_client_with_agent, client_with_agent, property_obj):
+        # Chaque test tourne dans sa propre transaction (rollback a la fin) :
+        # la VisitRequest creee par test_06 ne survit pas jusqu'ici, il en
+        # faut une nouvelle pour ce test precis.
+        visit = VisitRequest.objects.create(
+            client=client_with_agent, agent=property_obj.agent, visit_property=property_obj,
+            status='confirmed', scheduled_date=date.today() + timedelta(days=1),
+        )
         mock = {'success': True, 'reference': 'KPAY-E2E-001', 'status': 'pending', 'ussd_code': '', 'checkout_url': ''}
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=mock):
             r = auth_client_with_agent.post('/api/v1/payments/initiate/', {
@@ -65,7 +72,7 @@ class TestScenarioClientComplet:
                 'payment_method': 'mtn',
                 'phone_number': '+237670000020',
                 'related_type': 'visit',
-                'related_id': str(property_obj.id),
+                'related_id': str(visit.id),
             })
         assert r.status_code in [200, 201]
 

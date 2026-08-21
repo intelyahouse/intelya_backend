@@ -12,24 +12,34 @@ MOCK_OK = {'success': True, 'reference': 'KPAY-OK', 'status': 'pending', 'ussd_c
 MOCK_FAIL = {'success': False, 'error': 'Fonds insuffisants'}
 
 
+def _visit_request(client_user, property_obj):
+    from apps.visits.models import VisitRequest
+    return VisitRequest.objects.create(
+        client=client_user, agent=property_obj.agent, visit_property=property_obj,
+        status='confirmed', scheduled_date=timezone.now().date() + timedelta(days=1),
+    )
+
+
 class TestInitierPaiement:
 
-    def test_mtn_succes(self, auth_client, property_obj):
+    def test_mtn_succes(self, auth_client, client_user, property_obj):
+        visit = _visit_request(client_user, property_obj)
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
             r = auth_client.post('/api/v1/payments/initiate/', {
                 'amount': '5000', 'payment_method': 'mtn',
                 'phone_number': '+237670000001',
-                'related_type': 'visit', 'related_id': str(property_obj.id),
+                'related_type': 'visit', 'related_id': str(visit.id),
             })
         assert r.status_code == status.HTTP_201_CREATED
         assert 'reference' in r.data['data']
 
-    def test_orange_succes(self, auth_client, property_obj):
+    def test_orange_succes(self, auth_client, client_user, property_obj):
+        visit = _visit_request(client_user, property_obj)
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
             r = auth_client.post('/api/v1/payments/initiate/', {
                 'amount': '10000', 'payment_method': 'orange',
                 'phone_number': '+237690000001',
-                'related_type': 'visit', 'related_id': str(property_obj.id),
+                'related_type': 'visit', 'related_id': str(visit.id),
             })
         assert r.status_code == status.HTTP_201_CREATED
 
@@ -52,29 +62,30 @@ class TestInitierPaiement:
         })
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_idempotence(self, auth_client, property_obj):
-        unique_id = uuid.uuid4()
+    def test_idempotence(self, auth_client, client_user, property_obj):
+        visit = _visit_request(client_user, property_obj)
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
             r1 = auth_client.post('/api/v1/payments/initiate/', {
                 'amount': '5000', 'payment_method': 'mtn',
                 'phone_number': '+237670000001',
-                'related_type': 'visit', 'related_id': str(unique_id),
+                'related_type': 'visit', 'related_id': str(visit.id),
             })
             r2 = auth_client.post('/api/v1/payments/initiate/', {
                 'amount': '5000', 'payment_method': 'mtn',
                 'phone_number': '+237670000001',
-                'related_type': 'visit', 'related_id': str(unique_id),
+                'related_type': 'visit', 'related_id': str(visit.id),
             })
         assert r1.status_code == status.HTTP_201_CREATED
         assert r2.status_code == status.HTTP_200_OK
         assert r2.data['message'] == 'Transaction déjà en cours'
 
-    def test_escrow_cree(self, auth_client, property_obj):
+    def test_escrow_cree(self, auth_client, client_user, property_obj):
+        visit = _visit_request(client_user, property_obj)
         with patch('apps.payments.services.kpay.kpay_service.collect', return_value=MOCK_OK):
             r = auth_client.post('/api/v1/payments/initiate/', {
                 'amount': '5000', 'payment_method': 'mtn',
                 'phone_number': '+237670000001',
-                'related_type': 'visit', 'related_id': str(property_obj.id),
+                'related_type': 'visit', 'related_id': str(visit.id),
             })
         assert r.status_code == status.HTTP_201_CREATED
         assert Escrow.objects.filter(transaction__id=r.data['data']['transaction_id']).exists()

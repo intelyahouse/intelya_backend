@@ -89,7 +89,10 @@ class TestFluxCompletClientVisite:
         r = auth_client.get('/api/v1/users/me/')
         assert r.status_code == status.HTTP_200_OK
         data = r.data.get('data', r.data)
-        assert 'password' not in str(data).lower()
+        # "'password':" (avec les deux-points) cible la vraie cle 'password',
+        # sans faux positif sur 'has_usable_password' (booleen legitime,
+        # ne contient aucune donnee sensible -- voir UserSerializer)
+        assert "'password':" not in str(data).lower()
         assert 'token' not in str(data).lower()
 
 
@@ -175,5 +178,8 @@ class TestFluxAdminComplet:
             if r.status_code == 200:
                 content = str(r.data).lower()
                 for key in forbidden_keys:
-                    assert key not in content, \
+                    # "'password':" cible la vraie cle 'password', sans faux
+                    # positif sur 'has_usable_password' (booleen legitime)
+                    needle = "'password':" if key == 'password' else key
+                    assert needle not in content, \
                         f"Clé sensible '{key}' trouvée dans la réponse de {ep}"
