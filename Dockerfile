@@ -32,5 +32,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copie du projet
 COPY . .
 
+# Utilisateur non-root — ne jamais faire tourner l'app en root en production
+RUN groupadd -r intelya && useradd -r -g intelya -d /app intelya \
+    && mkdir -p /app/staticfiles /app/media \
+    && chown -R intelya:intelya /app
+USER intelya
+
 # Port exposé
 EXPOSE 8000

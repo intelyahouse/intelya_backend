@@ -1,0 +1,172 @@
+# Deploiement production INTELYA HAVEN.
+# Utilisation : docker compose -f docker-compose.prod.yml up -d
+#
+# Avant le premier lancement :
+#   1. Renseigner .env avec les vraies valeurs de production (SECRET_KEY,
+#      DB_PASSWORD, ALLOWED_HOSTS, FRONTEND_URL, credentials SMTP/Firebase/S3...)
+#   2. Remplacer intelya-haven.com par le vrai domaine dans nginx/nginx.conf
+#      et dans la commande certbot ci-dessous.
+#   3. Premiere emission de certificat TLS (a executer une fois, le service
+#      nginx doit tourner en HTTP seul le temps de la validation) :
+#        docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+#          --webroot -w /var/www/certbot -d intelya-haven.com \
+#          --email admin@intelya-haven.com --agree-tos --no-eff-email
+
+services:
+
+  db:
+    image: postgis/postgis:15-3.4
+    container_name: intelya_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Pas de port publie -- accessible uniquement depuis le reseau docker interne
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: intelya_redis
+    volumes:
+      - redis_data:/data
+    # Pas de port publie -- accessible uniquement depuis le reseau docker interne
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: intelya_backend
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             daphne -b 0.0.0.0 -p 8000 intelya.asgi:application"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=intelya.settings.production
+      - DJANGO_ENV=production
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: intelya_celery_worker
+    command: celery -A intelya worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=intelya.settings.production
+      - DJANGO_ENV=production
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: intelya_celery_beat
+    command: celery -A intelya beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=intelya.settings.production
+      - DJANGO_ENV=production
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Sauvegarde quotidienne de la base -- pg_dump vers un volume dedie,
+  # conserve les 14 derniers jours. A completer avec un envoi vers un
+  # stockage externe (S3, etc.) pour ne pas dependre uniquement du meme
+  # serveur physique.
+  db_backup:
+    image: postgis/postgis:15-3.4
+    container_name: intelya_db_backup
+    entrypoint: /bin/sh
+    command: /scripts/backup.sh
+    volumes:
+      - ./scripts/backup.sh:/scripts/backup.sh:ro
+      - db_backups:/backups
+    environment:
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=db
+      - BACKUP_RETENTION_DAYS=14
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: intelya_nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: intelya_certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Renouvellement automatique -- vérifie deux fois par jour, ne renouvelle
+    # que si le certificat expire dans moins de 30 jours (comportement par
+    # defaut de certbot renew).
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
+  db_backups:
+  certbot_certs:
+  certbot_www:

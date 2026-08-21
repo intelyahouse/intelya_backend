@@ -1,0 +1,44 @@
+# Secrets — ne doivent jamais entrer dans le contexte de build Docker
+.env
+.env.*
+firebase-credentials.json
+*.pem
+*.key
+
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+
+# Django
+*.log
+db.sqlite3
+media/
+staticfiles/
+
+# Tests / dev
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Divers
+README.md
+docker-compose*.yml
+Dockerfile*
+nginx/
+scripts/
