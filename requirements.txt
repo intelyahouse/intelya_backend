@@ -2,12 +2,12 @@
 # INTELYA HAVEN - Requirements
 
 # Django Core
-Django==4.2.13
-djangorestframework==3.15.1
-djangorestframework-simplejwt==5.3.1
+Django==4.2.30
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.5.1
 
 # Authentication
-django-allauth==0.63.3
+django-allauth==65.14.1
 dj-rest-auth==6.0.0
 google-auth==2.29.0
 django-cors-headers==4.3.1
@@ -30,14 +30,14 @@ django-redis==5.4.0
 # WebSocket temps réel (Chat)
 channels==4.1.0
 channels-redis==4.2.0
-daphne==4.1.2
+daphne==4.2.2
 
 # Stockage fichiers AWS S3
 boto3==1.34.114
 django-storages==1.14.3
 
 # Traitement images
-Pillow==10.3.0
+Pillow==12.3.0
 
 # Génération PDF (Contrats, Reçus)
 reportlab==4.2.0
@@ -52,7 +52,7 @@ firebase-admin==6.5.0
 django-ratelimit==4.1.0
 
 # Monitoring erreurs
-sentry-sdk==2.3.1
+sentry-sdk==2.8.0
 
 # Serveur production
 gunicorn==22.0.0
@@ -89,7 +89,7 @@ django-axes==6.4.0
 django-csp==3.8
 
 # XSS sanitization
-bleach==6.1.0
+bleach==6.4.0
 
 # Chiffrement données sensibles (CNI)
 django-encrypted-model-fields==0.6.5
