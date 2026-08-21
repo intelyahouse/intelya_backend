@@ -29,7 +29,7 @@ class MyRentPaymentsView(APIView):
             payments = RentPayment.objects.filter(tenant=request.user).select_related('lease__rental_property')
         elif request.user.role == 'agent':
             agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
-            payments = RentPayment.objects.filter(lease__agency_id=agency_id).select_related('tenant', 'lease__rental_property')
+            payments = RentPayment.objects.filter(lease__agency_id=agency_id).select_related('tenant', 'lease__rental_property') if agency_id else RentPayment.objects.none()
         elif request.user.role == 'owner':
             payments = RentPayment.objects.filter(lease__owner=request.user).select_related('tenant', 'lease__rental_property')
         else:
@@ -171,9 +171,10 @@ class MyComplaintsView(APIView):
             complaints = Complaint.objects.filter(tenant=request.user).select_related('assigned_to', 'lease__rental_property')
         elif request.user.role == 'agent':
             agency_id = getattr(getattr(request.user, 'agent_profile', None), 'agency_id', None)
-            complaints = Complaint.objects.filter(
-                Q(assigned_to=request.user) | Q(agency_id=agency_id)
-            ).select_related('tenant', 'lease__rental_property')
+            complaint_filter = Q(assigned_to=request.user)
+            if agency_id:
+                complaint_filter |= Q(agency_id=agency_id)
+            complaints = Complaint.objects.filter(complaint_filter).select_related('tenant', 'lease__rental_property')
         else:
             complaints = Complaint.objects.filter(assigned_to=request.user).select_related('tenant', 'lease__rental_property')
 

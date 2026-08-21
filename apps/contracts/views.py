@@ -115,7 +115,7 @@ class MyLeasesView(APIView):
             leases = LeaseContract.objects.filter(tenant=user)
         elif user.role == 'agent':
             agency_id = getattr(getattr(user, 'agent_profile', None), 'agency_id', None)
-            leases = LeaseContract.objects.filter(agency_id=agency_id)
+            leases = LeaseContract.objects.filter(agency_id=agency_id) if agency_id else LeaseContract.objects.none()
         elif user.role == 'owner':
             leases = LeaseContract.objects.filter(owner=user)
         else:
