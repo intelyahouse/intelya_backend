@@ -47,6 +47,7 @@ class VisitRequest(models.Model):
     status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
     scheduled_date = models.DateField(null=True, blank=True, db_index=True)
     scheduled_time = models.TimeField(null=True, blank=True)
+    reminder_sent  = models.BooleanField(default=False)
 
     visit_fee         = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_free           = models.BooleanField(default=True)

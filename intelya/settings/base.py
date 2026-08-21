@@ -457,6 +457,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.users.tasks.remind_pending_validations',
         'schedule': crontab(minute=0),
     },
+    # Invitations d'agence sans reponse apres 7 jours — une fois par jour a 5h
+    'expire-stale-invitations': {
+        'task': 'apps.agencies.tasks.expire_stale_invitations',
+        'schedule': crontab(hour=5, minute=0),
+    },
+    # Rappel des visites programmees pour le lendemain — tous les jours a 18h
+    'send-visit-reminders': {
+        'task': 'apps.visits.tasks.send_visit_reminders',
+        'schedule': crontab(hour=18, minute=0),
+    },
     # Rapports mensuels — 1er de chaque mois à 6h00
     'monthly-reports': {
         'task': 'apps.leases.tasks.generate_monthly_reports',

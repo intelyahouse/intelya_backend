@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema
 from .models import AgentOwnerContract, LeaseContract
 from .serializers import (
     AgentOwnerContractSerializer,
+    CreateAgentOwnerContractSerializer,
     CreateLeaseSerializer,
     LeaseContractSerializer
 )
@@ -176,4 +177,124 @@ class LeaseContractPDFView(APIView):
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="bail-{lease.id}.pdf"'
+        return response
+
+
+class CreateAgentOwnerContractView(APIView):
+    """Agent formalise un contrat avec un proprietaire dont il a le mandat
+    actif (OwnerAgentRelation) -- distinct du mandat lui-meme : ce contrat
+    porte les conditions precises (commission, duree, termes) et se signe
+    electroniquement des deux cotes, comme un bail."""
+    permission_classes = [IsAuthenticated, IsAgent]
+
+    @extend_schema(tags=['Contracts'], summary="Créer un contrat agent-propriétaire", request=CreateAgentOwnerContractSerializer)
+    def post(self, request):
+        serializer = CreateAgentOwnerContractSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(error_response("Données invalides", serializer.errors), status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.agents.models import OwnerAgentRelation
+        agency = getattr(getattr(request.user, 'agent_profile', None), 'agency', None)
+        owner = serializer.validated_data['owner']
+
+        if not OwnerAgentRelation.objects.filter(
+            owner=owner, agency=agency, status='active'
+        ).exists():
+            return Response(
+                error_response("Ce propriétaire n'a pas de mandat actif avec votre agence"),
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        contract = serializer.save(agent=request.user, agency=agency)
+        return Response(
+            success_response(AgentOwnerContractSerializer(contract).data, "Contrat créé — en attente des signatures"),
+            status=status.HTTP_201_CREATED
+        )
+
+
+class SignAgentOwnerContractView(APIView):
+    """Signer le contrat agent-propriétaire"""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Contracts'], summary="Signer un contrat agent-propriétaire")
+    def post(self, request, contract_id):
+        try:
+            contract = AgentOwnerContract.objects.get(id=contract_id)
+        except AgentOwnerContract.DoesNotExist:
+            return Response(error_response("Contrat introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        if user == contract.agent:
+            contract.signed_by_agent = True
+        elif user == contract.owner:
+            contract.signed_by_owner = True
+        else:
+            return Response(error_response("Non autorisé"), status=status.HTTP_403_FORBIDDEN)
+
+        if contract.is_fully_signed():
+            contract.signed_at = timezone.now()
+
+        contract.save()
+
+        return Response(success_response(
+            AgentOwnerContractSerializer(contract).data,
+            "Contrat signé ✅" if contract.is_fully_signed() else "Signature enregistrée. En attente de l'autre partie."
+        ))
+
+
+class MyAgentOwnerContractsView(APIView):
+    """Mes contrats agent-propriétaire"""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Contracts'], summary="Mes contrats agent-propriétaire")
+    def get(self, request):
+        user = request.user
+        if user.role == 'agent':
+            contracts = AgentOwnerContract.objects.filter(agent=user)
+        elif user.role == 'owner':
+            contracts = AgentOwnerContract.objects.filter(owner=user)
+        else:
+            contracts = AgentOwnerContract.objects.none()
+
+        return Response(success_response(AgentOwnerContractSerializer(contracts, many=True).data))
+
+
+class AgentOwnerContractPDFView(APIView):
+    """Document PDF brande du contrat agent-propriétaire."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Contracts'], summary="Télécharger le PDF d'un contrat agent-propriétaire")
+    def get(self, request, contract_id):
+        from django.http import HttpResponse
+        from core.pdf import build_pdf
+
+        try:
+            contract = AgentOwnerContract.objects.select_related('agent', 'owner', 'agency').get(id=contract_id)
+        except AgentOwnerContract.DoesNotExist:
+            return Response(error_response("Contrat introuvable"), status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        if contract.agent_id != user.id and contract.owner_id != user.id:
+            return Response(error_response("Accès non autorisé à ce contrat"), status=status.HTTP_403_FORBIDDEN)
+
+        sections = [
+            (None, [
+                ["Agence", contract.agency.name if contract.agency else "-"],
+                ["Agent", contract.agent.get_full_name()],
+                ["Propriétaire", contract.owner.get_full_name()],
+                ["Statut", contract.get_status_display()],
+            ]),
+            ("Conditions", [
+                ["Commission", f"{contract.commission_percent}%"],
+                ["Date de début", str(contract.start_date)],
+                ["Date de fin", str(contract.end_date) if contract.end_date else "Durée indéterminée"],
+                ["Termes", contract.terms or "-"],
+                ["Signé par l'agent", "Oui" if contract.signed_by_agent else "Non"],
+                ["Signé par le propriétaire", "Oui" if contract.signed_by_owner else "Non"],
+            ]),
+        ]
+        pdf_bytes = build_pdf("Contrat Agent-Propriétaire", str(contract.id), sections)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="contrat-agent-proprietaire-{contract.id}.pdf"'
         return response

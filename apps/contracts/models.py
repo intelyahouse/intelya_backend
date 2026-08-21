@@ -15,6 +15,7 @@ class AgentOwnerContract(models.Model):
     id                 = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     agent              = models.ForeignKey(User, on_delete=models.CASCADE, related_name="agent_contracts", limit_choices_to={"role": "agent"})
     owner              = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owner_contracts", limit_choices_to={"role": "owner"})
+    agency             = models.ForeignKey("agencies.Agency", on_delete=models.PROTECT, related_name="agent_owner_contracts", null=True, blank=True)
     status             = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
     commission_percent = models.DecimalField(max_digits=5, decimal_places=2, default=10)
     start_date         = models.DateField(db_index=True)

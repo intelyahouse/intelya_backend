@@ -8,16 +8,23 @@ User = get_user_model()
 class AgentOwnerContractSerializer(serializers.ModelSerializer):
     agent_name = serializers.CharField(source='agent.get_full_name', read_only=True)
     owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    agency_name = serializers.CharField(source='agency.name', read_only=True, default=None)
 
     class Meta:
         model  = AgentOwnerContract
         fields = [
-            'id', 'agent_name', 'owner_name', 'status',
+            'id', 'agent_name', 'owner_name', 'agency_name', 'status',
             'commission_percent', 'start_date', 'end_date',
             'terms', 'signed_by_agent', 'signed_by_owner',
             'signed_at', 'created_at'
         ]
         read_only_fields = ['signed_by_agent', 'signed_by_owner', 'signed_at', 'status']
+
+
+class CreateAgentOwnerContractSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = AgentOwnerContract
+        fields = ['owner', 'commission_percent', 'start_date', 'end_date', 'terms']
 
 
 class CreateLeaseSerializer(serializers.ModelSerializer):
