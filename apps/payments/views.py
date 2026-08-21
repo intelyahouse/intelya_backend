@@ -200,6 +200,13 @@ class CampayWebhookView(APIView):
                 return Response({'status': 'not_found'})
 
         with transaction.atomic():
+            txn = Transaction.objects.select_for_update().get(pk=txn.pk)
+            if txn.status == 'completed':
+                # Webhook deja traite (retransmission du fournisseur) --
+                # sans cette garde, _transfer_to_owner serait rejoue et
+                # verserait le proprietaire une deuxieme fois.
+                return Response({'status': 'already_processed'})
+
             txn.webhook_data = data
             if status_ in ['SUCCESSFUL', 'SUCCESS', 'COMPLETED']:
                 txn.status = 'completed'
@@ -348,6 +355,13 @@ class KPayWebhookView(APIView):
             return Response({'tid': tid, 'refid': refid, 'reply': 'OK'})
 
         with transaction.atomic():
+            txn = Transaction.objects.select_for_update().get(pk=txn.pk)
+            if txn.status == 'completed':
+                # Webhook deja traite (retransmission du fournisseur) --
+                # sans cette garde, _transfer_to_owner serait rejoue et
+                # verserait le proprietaire une deuxieme fois.
+                return Response({'tid': tid, 'refid': refid, 'reply': 'OK'})
+
             txn.webhook_data = data
             txn.external_reference = tid
 

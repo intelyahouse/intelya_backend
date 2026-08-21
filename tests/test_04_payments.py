@@ -221,3 +221,59 @@ class TestWebhookKPay:
         }, format='json')
         escrow.refresh_from_db()
         assert escrow.status == 'refunded'
+
+
+class TestWebhookIdempotence:
+    """Un fournisseur de paiement peut retransmettre le meme webhook
+    'succes' plusieurs fois (retry sans reponse 200 a temps, etc.). Sans
+    garde, chaque retransmission relancait _transfer_to_owner et versait
+    le proprietaire une deuxieme fois -- l'idempotence documentee dans
+    disbursement.py n'etait en realite appliquee qu'a la part agence."""
+
+    def _rent_lease(self, owner_user, client_user, property_obj):
+        import datetime
+        from apps.contracts.models import LeaseContract
+        from apps.owners.models import OwnerProfile
+        OwnerProfile.objects.filter(user=owner_user).update(mtn_momo_number='+237670000003')
+        return LeaseContract.objects.create(
+            tenant=client_user, owner=owner_user, agent=None, agency=None,
+            rental_property=property_obj, monthly_rent=30000, deposit_amount=60000,
+            start_date=datetime.date.today(),
+            end_date=datetime.date.today() + datetime.timedelta(days=365),
+            payment_day=5, status='active', signed_by_tenant=True, signed_by_owner=True,
+        )
+
+    def test_kpay_webhook_replay_does_not_double_pay_owner(self, api_client, owner_user, client_user, property_obj):
+        lease = self._rent_lease(owner_user, client_user, property_obj)
+        txn = Transaction.objects.create(
+            reference='IH-W005', payer=client_user, receiver=owner_user,
+            transaction_type='rent', amount=30500,
+            platform_fee=0, net_amount=30000, agency_fee_amount=0,
+            currency='FCFA', status='processing', payment_method='mtn',
+            related_lease_id=lease.id,
+        )
+        payload = {'tid': 'KPAY-T005', 'refid': 'IH-W005', 'statusid': '01', 'statusdesc': 'Success'}
+        with patch('apps.payments.services.kpay.kpay_service.disburse', return_value={'success': True, 'reference': 'X'}) as mocked_disburse:
+            api_client.post('/api/v1/payments/webhook/kpay/', payload, format='json')
+            api_client.post('/api/v1/payments/webhook/kpay/', payload, format='json')
+        assert mocked_disburse.call_count == 1
+        txn.refresh_from_db()
+        assert txn.status == 'completed'
+
+    def test_campay_webhook_replay_does_not_double_pay_owner(self, api_client, owner_user, client_user, property_obj):
+        lease = self._rent_lease(owner_user, client_user, property_obj)
+        txn = Transaction.objects.create(
+            reference='IH-W006', external_reference='IH-W006',
+            payer=client_user, receiver=owner_user,
+            transaction_type='rent', amount=30500,
+            platform_fee=0, net_amount=30000, agency_fee_amount=0,
+            currency='FCFA', status='processing', payment_method='mtn',
+            related_lease_id=lease.id,
+        )
+        payload = {'reference': 'IH-W006', 'status': 'SUCCESSFUL'}
+        with patch('apps.payments.services.kpay.kpay_service.disburse', return_value={'success': True, 'reference': 'X'}) as mocked_disburse:
+            api_client.post('/api/v1/payments/webhook/campay/', payload, format='json')
+            api_client.post('/api/v1/payments/webhook/campay/', payload, format='json')
+        assert mocked_disburse.call_count == 1
+        txn.refresh_from_db()
+        assert txn.status == 'completed'
